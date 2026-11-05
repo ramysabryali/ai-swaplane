@@ -49,7 +49,7 @@ Swaplane/
 ├── CLAUDE.md
 ├── README.md
 ├── docs/
-├── Package.swift
+├── Package.swift              # app executable = SwaplaneApp, CLI product = swaplane
 ├── Sources/
 │   ├── SwaplaneCore/        # models, Profile, errors, Redacted, paths
 │   ├── Vault/                 # Keychain + encrypted snapshots

@@ -45,11 +45,10 @@
 
 ```bash
 swift build
-swift test
-swift test --filter VaultTests
-# App bundle (once App/ project exists)
-xcodebuild -scheme Swaplane -configuration Debug build
-xcodebuild -scheme Swaplane test
+swift test                       # 29 tests as of v0.1
+swift test --filter EngineTests
+./scripts/make-app.sh            # builds build/Swaplane.app (ad-hoc signed)
+open -n build/Swaplane.app
 # Format / lint
 swift format lint -r Sources Tests
 ```
