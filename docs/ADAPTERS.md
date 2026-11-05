@@ -1,6 +1,6 @@
 # Adapters — per-tool specs
 
-> **⚠ Everything below is UNVERIFIED prior knowledge.** Paths, Keychain item names, env vars and endpoints must be confirmed by [SPIKE-0](SPIKE-0.md) on a real machine before implementation. When confirmed, record the date and tool version in the "Verified" table at the end of each section and in the adapter's `Constants.swift`.
+> **Status:** SPIKE-0 ran on 2026-11-05 — see [SPIKE-0-FINDINGS.md](SPIKE-0-FINDINGS.md). Items marked **Verified** below were confirmed on a real machine; everything else (and all usage endpoints) is still unverified prior knowledge. Record verification date and tool version in each adapter's `Constants.swift`.
 >
 > Never hardcode these values outside `Constants.swift`. Adapters must refuse to operate (state: *unsupported version*) when the installed tool version is outside the verified range.
 
@@ -33,7 +33,13 @@ Common interface: see `ToolAdapter` in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Usage (v0.2)**: candidate undocumented endpoint `GET https://api.anthropic.com/api/oauth/usage` with `Authorization: Bearer <accessToken>` and header `anthropic-beta: oauth-2025-04-20`; response includes rolling-window utilization (e.g. 5-hour and 7-day) with reset times. Treat as unstable. Handle 401 by flagging "token expired" (do not attempt to refresh tokens ourselves in v0.2 — refreshing rotates the refresh token and could desync from the CLI; only revisit with explicit design).
 
-**Verified**: _(date / CLI version / notes)_
+**Verified** (2026-11-05, CLI 1.0.83 local npm install):
+- ✅ Keychain service `Claude Code-credentials` exists in the login keychain; the CLI refreshes tokens by rewriting the same item (modified-date changed same day).
+- ✅ `~/.claude.json` (0600) holds `oauthAccount` (`accountUuid`, `emailAddress`, `organizationName`, `organizationUuid`, …) alongside caches/history — merge only `oauthAccount`, never swap the file.
+- ✅ `claude auth status` prints identity JSON non-interactively — use it for `verify()`.
+- ✅ `CLAUDE_CONFIG_DIR` uses separate Keychain items named `Claude Code-credentials-<8 hex>`; ❌ the suffix is **not** `sha256(path)[:8]` — derivation unknown (blocks v0.4 per-shell; see SPIKE-0-FINDINGS follow-up 1).
+- ⚠ The CLI may be a shell alias (`alias claude=~/.claude/local/claude`), not on `PATH`: probe known install locations. Claude Desktop also bundles its own Claude Code build sharing the same Keychain service.
+- ❓ Credential JSON field names and usage endpoint: not verified.
 
 ---
 
@@ -54,7 +60,14 @@ Common interface: see `ToolAdapter` in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Usage**: via the same account's OAuth data if obtainable; otherwise show "usage unavailable for desktop"; desktop profiles may inherit usage from a linked Claude Code profile with the same identity (link UI in v0.2).
 
-**Verified**: _(date / app version / notes)_
+**Verified** (2026-11-05, app 4.16336.0):
+- ✅ Bundle ID `com.anthropic.claudefordesktop`; Electron; no single-instance Info.plist key.
+- ✅ Keychain item `Claude Safe Storage` exists, single, never modified → shared key; do not touch.
+- ✅ Data dir is **~15 GB** (`vm_bundles` 11 GB, `Cache` 1.3 GB, `claude-code` 561 MB, …). **State bundle MUST be an allowlist**, not "everything minus caches".
+- ✅ Auth lives in `Cookies` (SQLite; `.claude.ai` `sessionKey*`, `lastActiveOrg`) and `config.json` (`oauth:tokenCache`, `oauth:tokenCacheV2`, `lastKnownAccountUuid`). Full allowlist/exclude lists: SPIKE-0-FINDINGS.md.
+- ✅ No clean plain-text identity file (email only in IndexedDB blobs/session JSON). Identity = `lastKnownAccountUuid`, mapped to a user-confirmed label, optionally resolved via a Claude Code profile with the same `accountUuid`.
+- ✅ Snapshots contain plaintext PII → encryption mandatory.
+- ❓ Not verified: `--user-data-dir` side-by-side launch, Safe Storage ACL, graceful-quit timing.
 
 ---
 
@@ -76,7 +89,12 @@ Common interface: see `ToolAdapter` in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Usage (v0.3/0.2 extension)**: candidates — (a) parse the latest `rate_limits` event in `~/.codex/sessions` rollouts (local, no network, preferred); (b) ChatGPT backend usage endpoint (undocumented, e.g. `/backend-api/wham/usage`) with the access token. Prefer (a); (b) behind feature flag.
 
-**Verified**: _(date / CLI version / notes)_
+**Verified** (2026-11-05; no `codex` binary on this machine, `~/.codex` used by the Codex desktop app):
+- ✅ Credentials are the **file** `~/.codex/auth.json` (mode 0600); **no Keychain item**. Keys: `OPENAI_API_KEY`, `auth_mode`, `last_refresh`, `tokens{access_token, account_id, id_token, refresh_token}`.
+- ✅ **Usage source (local, preferred):** session JSONL contains `rate_limits` events with `primary.used_percent`, `primary.window_minutes` (300) and `primary.resets_at`.
+- ✅ `~/.codex` holds 70 MB+ of unrelated state → `credentialsOnly` copies `auth.json` only.
+- ⚠ One adapter should serve both the CLI and the Codex desktop app (shared directory); probe them separately.
+- ❓ `CODEX_HOME` override and keyring-mode config key: not tested.
 
 ---
 
@@ -91,7 +109,11 @@ Common interface: see `ToolAdapter` in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Usage**: likely unavailable; show "n/a".
 
-**Verified**: _(date / app version / notes)_
+**Verified** (2026-11-05):
+- ⚠ **`/Applications/ChatGPT.app` has bundle ID `com.openai.codex`** (v26.1029.x, team `2DC432GLL2`, not sandboxed) — it is the **Codex desktop app**, not a separate ChatGPT chat client. It uses `~/.codex/auth.json` plus `~/Library/Application Support/Codex` (192 MB, Chromium-style).
+- `~/Library/Application Support/com.openai.chat` (812 KB) holds account-suffixed caches (`conversations-v3-<id>`, `codex-taskItems-*-<id>`), not auth.
+- No Keychain items for openai/codex/chatgpt in the login keychain; the app's keychain access group (`2DC432GLL2.*`) means any items live in the data-protection keychain and are **not reachable** by a different signing identity.
+- **Decision:** v0.3 Part 2 becomes **"Codex Desktop"** (`com.openai.codex`) sharing the Codex adapter's `auth.json` switch + app stop/relaunch. A distinct ChatGPT chat client stays *Unsupported* until its auth store is identified. Needs a second account to test.
 
 ---
 

@@ -145,3 +145,5 @@ Instead of swap-in-place, launch a second instance with `--user-data-dir=<profil
 ## Decisions log
 
 _(append dated entries as SPIKE-0 and implementation refine this document)_
+
+- **2026-11-05 (SPIKE-0):** Claude Desktop state bundles are **allowlists** (data dir is ~15 GB). Claude Code per-shell switching is blocked on deriving the `Claude Code-credentials-<suffix>` scheme. Codex stores credentials in `~/.codex/auth.json` (no Keychain), and `/Applications/ChatGPT.app` is the Codex desktop app (`com.openai.codex`), so v0.3 Part 2 becomes "Codex Desktop". Codex usage comes from local `rate_limits` session events. Details: [SPIKE-0-FINDINGS.md](SPIKE-0-FINDINGS.md).
