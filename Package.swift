@@ -13,13 +13,14 @@ let package = Package(
         .target(name: "SwaplaneCore"),
         .target(name: "Vault", dependencies: ["SwaplaneCore"]),
         .target(name: "Adapters", dependencies: ["SwaplaneCore"]),
+        .target(name: "Usage", dependencies: ["SwaplaneCore"]),
         .target(name: "SwitchEngine", dependencies: ["SwaplaneCore", "Vault", "Adapters"]),
-        .target(name: "SwaplaneUI", dependencies: ["SwaplaneCore", "Vault", "Adapters", "SwitchEngine"]),
+        .target(name: "SwaplaneUI", dependencies: ["SwaplaneCore", "Vault", "Adapters", "SwitchEngine", "Usage"]),
         .executableTarget(name: "SwaplaneApp", dependencies: ["SwaplaneUI"]),
         .executableTarget(name: "swaplane-cli", dependencies: ["SwaplaneCore"]),
         .testTarget(
             name: "SwaplaneTests",
-            dependencies: ["SwaplaneCore", "Vault", "Adapters", "SwitchEngine"]
+            dependencies: ["SwaplaneCore", "Vault", "Adapters", "SwitchEngine", "Usage"]
         ),
     ]
 )
