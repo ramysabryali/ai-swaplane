@@ -15,6 +15,14 @@ Switch between your Claude accounts from the macOS menu bar. Claude Code and Cla
 
 **Requirements:** macOS 14 or newer, and Claude Code and/or Claude Desktop.
 
+### Homebrew
+
+```bash
+brew install --cask ramysabryali/tap/ai-swaplane
+```
+
+Update with `brew upgrade --cask ai-swaplane`. Remove with `brew uninstall --cask --zap ai-swaplane`.
+
 ### Build and install from source
 
 You need Xcode 16 or newer (or the Swift 6 toolchain).
