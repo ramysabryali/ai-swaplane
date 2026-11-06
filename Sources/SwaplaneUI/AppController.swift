@@ -26,7 +26,7 @@ final class WindowsController: NSObject, NSWindowDelegate {
         if settings == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "Swaplane Settings"
+            w.title = "AI Swaplane Settings"
             w.contentViewController = NSHostingController(rootView: SettingsView(model: model))
             w.isReleasedWhenClosed = false
             w.delegate = self
@@ -41,7 +41,7 @@ final class WindowsController: NSObject, NSWindowDelegate {
         if wizard == nil {
             let w = NSWindow(contentViewController: hosting)
             w.styleMask = [.titled, .closable]
-            w.title = "Swaplane"
+            w.title = "AI Swaplane"
             w.isReleasedWhenClosed = false
             w.delegate = self
             w.center()
@@ -96,6 +96,8 @@ final class StatusItemController: NSObject {
         panel.isOpaque = false
         panel.hasShadow = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.hidesOnDeactivate = false
         panel.onCancel = { [weak self] in self?.close() }
         sizeObs = host.observe(\.preferredContentSize, options: [.new]) { [weak self] _, _ in
             MainActor.assumeIsolated { self?.resize() }
@@ -123,7 +125,7 @@ final class StatusItemController: NSObject {
         let snap = (code ?? desk).flatMap { model.usage[$0.id] }
         item.button?.image = MenuBarIcon.image(primary: primary, secondary: second, session: snap?.session?.percent, weekly: snap?.weekly?.percent)
         let names = Tool.allCases.compactMap { t in model.activeAccount(for: t).map { "\(t.shortName): \($0.group.label)" } }
-        var text = names.isEmpty ? "Swaplane" : "Swaplane — " + names.joined(separator: ", ")
+        var text = names.isEmpty ? "AI Swaplane" : "AI Swaplane — " + names.joined(separator: ", ")
         if let s = snap?.session { text += ", session \(Int(s.percent.rounded())) percent" }
         if let w = snap?.weekly { text += ", weekly \(Int(w.percent.rounded())) percent" }
         item.button?.toolTip = text
@@ -139,23 +141,28 @@ final class StatusItemController: NSObject {
             let menu = NSMenu()
             menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
             menu.addItem(.separator())
-            menu.addItem(withTitle: "Quit Swaplane", action: #selector(quit), keyEquivalent: "q").target = self
+            menu.addItem(withTitle: "Quit AI Swaplane", action: #selector(quit), keyEquivalent: "q").target = self
             item.menu = menu
             item.button?.performClick(nil)
             item.menu = nil
             return
         }
-        panel.isVisible ? close() : open()
+        // Click opens; a click while open does nothing. Outside clicks close (see monitors).
+        if !panel.isVisible { open() }
     }
 
     private func open() {
         NSApp.appearance = model.appearance.nsAppearance
         resize()
+        // Show without taking key focus so the frontmost app's window stays as it was.
         panel.orderFrontRegardless()
-        panel.makeKey()
         monitors = [
             NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-                MainActor.assumeIsolated { self?.close() }
+                MainActor.assumeIsolated {
+                    // A click on our own status item is handled by `clicked` (does nothing while open).
+                    guard let self, !self.isOverStatusItem(NSEvent.mouseLocation) else { return }
+                    self.close()
+                }
             } as Any,
             NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
                 MainActor.assumeIsolated {
@@ -165,6 +172,11 @@ final class StatusItemController: NSObject {
                 return e
             } as Any,
         ]
+    }
+
+    private func isOverStatusItem(_ p: NSPoint) -> Bool {
+        guard let f = item.button?.window?.frame else { return false }
+        return f.insetBy(dx: -2, dy: -2).contains(p)
     }
 
     private func close() {
@@ -212,6 +224,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let usage = UsageService(paths: paths, keychain: keychain)
         let model = AppModel(engine: engine, vault: vault, usage: usage)
         NSApp.appearance = model.appearance.nsAppearance
+        AppIconArt.installDockIcon()
         let windows = WindowsController(model: model)
         model.onOpenSettings = { [weak windows] in windows?.showSettings() }
         model.onOpenWizard = { [weak windows] in windows?.showWizard() }

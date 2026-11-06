@@ -8,7 +8,6 @@ import Usage
 import Vault
 
 public enum ToastAction: Equatable {
-    case undo([Tool: UUID])
     case retry(Tool, UUID)
 }
 
@@ -84,6 +83,9 @@ public final class AppModel {
         didSet { UserDefaults.standard.set(usageEnabled, forKey: "usageEnabled"); if usageEnabled { Task { await refreshUsage() } } }
     }
 
+    public var checkingUsage = false
+    /// Set while rendering documentation images: menus draw as static labels (ImageRenderer can't draw `Menu`).
+    @ObservationIgnored var snapshotMode = false
     @ObservationIgnored public var onChange: (() -> Void)?
     @ObservationIgnored public var onOpenSettings: (() -> Void)?
     @ObservationIgnored public var onOpenWizard: (() -> Void)?
@@ -199,7 +201,7 @@ public final class AppModel {
         probes = [.claudeCode: ToolProbe(status: .ok), .claudeDesktop: ToolProbe(status: .ok)]
         detected = scenario == "welcome" ? [.claudeCode: DetectedIdentity(identityKey: "k", displayHint: "alice@example.com"), .claudeDesktop: DetectedIdentity(identityKey: "k", displayHint: "alice@example.com")] : [:]
         selectedID = gs.count > 1 ? gs[1].id : gs.first?.id
-        toast = scenario == "multi" ? Toast(message: "Switched Code to Personal", actions: [.undo([:])]) : nil
+        toast = scenario == "multi" ? Toast(message: "Switched CLI to Personal") : nil
         loaded = true
     }
 
@@ -232,6 +234,23 @@ public final class AppModel {
         usage[a.id] = snap
         Reminders.sync(group: a.id, label: a.group.label, prefs: reminder(for: a.id), snapshot: snap)
         onChange?()
+    }
+
+    /// Re-reads the live Claude Code sign-in and fetches usage again (no token refresh).
+    public func checkUsageNow() async {
+        guard !checkingUsage else { return }
+        checkingUsage = true
+        await refreshUsage()
+        checkingUsage = false
+        if let a = activeAccount(for: .claudeCode), usage[a.id]?.state == .expired {
+            showToast(Toast(message: "Still expired. Run `claude` in Terminal, then check again.", isError: true), seconds: 6)
+        }
+    }
+
+    public func openTerminal() {
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Terminal") {
+            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
 
     // MARK: Selection and presentation
@@ -291,19 +310,15 @@ public final class AppModel {
             if case .failure(let e) = r.result { return (r.tool, (e as? LocalizedError)?.errorDescription ?? "Something went wrong.") }
             return nil
         }
-        var prevForUndo: [Tool: UUID] = [:]
-        for t in ok { if let p = previous[t] { prevForUndo[t] = p } }
         if failed.isEmpty, !ok.isEmpty {
             flashID = a.id; flashTick += 1
             SoundPlayer.shared.play(.success)
-            showToast(Toast(message: "Switched \(ok.map(\.displayName).joined(separator: " + ")) to \(a.group.label)",
-                            actions: prevForUndo.isEmpty ? [] : [.undo(prevForUndo)]))
+            showToast(Toast(message: "Switched \(ok.map(\.displayName).joined(separator: " + ")) to \(a.group.label)"))
             Task { await refreshUsage() }
         } else if !failed.isEmpty, !ok.isEmpty {
             flashID = a.id; flashTick += 1
             SoundPlayer.shared.play(.warn)
-            var acts: [ToastAction] = failed.map { .retry($0.0, a.id) }
-            if !prevForUndo.isEmpty { acts.append(.undo(prevForUndo)) }
+            let acts: [ToastAction] = failed.map { .retry($0.0, a.id) }
             showToast(Toast(message: "\(ok.map(\.displayName).joined(separator: " + ")) switched. \(failed[0].0.displayName) couldn't switch: \(failed[0].1)",
                             actions: acts, isError: true), seconds: 20)
         } else if let f = failed.first {
@@ -315,13 +330,6 @@ public final class AppModel {
     public func perform(_ action: ToastAction) async {
         showToast(nil)
         switch action {
-        case .undo(let prev):
-            SoundPlayer.shared.play(.tick)
-            busy = true
-            for tool in Tool.allCases { if let id = prev[tool] { try? await engine.switchTo(id) } }
-            busy = false
-            await reload()
-            showToast(Toast(message: "Undone. Restored the previous accounts."), seconds: 4)
         case .retry(let tool, let gid):
             if let a = accounts.first(where: { $0.id == gid }) { await switchAccount(a, tools: [tool]) }
         }
@@ -359,6 +367,26 @@ public final class AppModel {
         }
         SoundPlayer.shared.play(.remove)
         showToast(Toast(message: "Removed \(a.group.label). Its sign-in stays in the app if it was active."), seconds: 6)
+    }
+
+    /// Whether the reset reminder for one window ("Session" or "Weekly") is on.
+    public func windowReminder(_ a: Account, _ window: String) -> Bool {
+        let r = reminder(for: a.id)
+        return r.enabled && (window == "Session" ? r.session : r.weekly)
+    }
+
+    /// Turns the reminder for one window on or off. The account-level flag follows: on while any window is on.
+    public func toggleWindowReminder(_ a: Account, _ window: String) {
+        var r = reminder(for: a.id)
+        let wasOn = windowReminder(a, window)
+        if !r.enabled { r.session = false; r.weekly = false }  // first switch-on starts from "all off"
+        if window == "Session" { r.session = !wasOn } else { r.weekly = !wasOn }
+        r.enabled = r.session || r.weekly
+        reminders[a.id] = r
+        persistReminders()
+        if !wasOn { Reminders.requestPermission() }
+        Reminders.sync(group: a.id, label: a.group.label, prefs: r, snapshot: usage[a.id])
+        SoundPlayer.shared.play(wasOn ? .off : .on)
     }
 
     public func toggleReminder(_ a: Account) {

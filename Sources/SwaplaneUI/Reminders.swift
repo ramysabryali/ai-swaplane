@@ -32,7 +32,7 @@ enum Reminders {
                 let at = w.resetsAt, at > Date()
             else { continue }
             let c = UNMutableNotificationContent()
-            c.title = "Swaplane"
+            c.title = "AI Swaplane"
             c.body = "\(label): \(w.name.lowercased()) limit reset. It's available again."
             c.sound = .default
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: at.timeIntervalSinceNow, repeats: false)

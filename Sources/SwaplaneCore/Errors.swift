@@ -27,7 +27,7 @@ public enum SwaplaneError: Error, LocalizedError, Equatable, Sendable {
         case .verifyFailed(let why): "Couldn't confirm the switch: \(why)"
         case .switchInProgress(let t): "A switch for \(t.displayName) is already running."
         case .drift(let t):
-            "\(t.displayName) is signed in to a different account than Swaplane expected."
+            "\(t.displayName) is signed in to a different account than AI Swaplane expected."
         case .invalidBundle(let why): "Invalid profile data: \(why)"
         case .io(let why): "File error: \(why)"
         }

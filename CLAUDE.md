@@ -1,10 +1,10 @@
-# CLAUDE.md — Swaplane
+# CLAUDE.md — AI Swaplane
 
 Guidance for Claude Code when working in this repository. Read this first, then the docs it points to.
 
 ## What this project is
 
-**Swaplane** is a native, standalone macOS app (menu bar + main window) that lets users switch between multiple accounts of AI tools — desktop apps and CLIs — safely and instantly. First target: Claude (Desktop + Claude Code). Then Codex CLI, then ChatGPT desktop.
+**AI Swaplane** (display name; module and CLI names stay `Swaplane*` / `swaplane`) is a native, standalone macOS app (menu bar + main window) that lets users switch between multiple accounts of AI tools — desktop apps and CLIs — safely and instantly. First target: Claude (Desktop + Claude Code). Then Codex CLI, then ChatGPT desktop.
 
 Core idea: a **Profile** = (tool, identity, isolated state bundle). Profiles are keyed by UUID, **never by email**, so the same email can have several independent profiles.
 

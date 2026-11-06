@@ -36,11 +36,11 @@ struct PanelView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading, spacing: 1) {
-                Text("Swaplane").font(.system(size: 15, weight: .semibold))
+                Text("AI Swaplane").font(.system(size: 15, weight: .semibold))
                 Text(statusLine).font(.system(size: 11.5)).foregroundStyle(Theme.muted)
             }
             Spacer()
-            IconButton(symbol: "gearshape", label: "Settings") { model.onOpenSettings?() }
+            IconButton(symbol: "gearshape", label: "Settings") { model.onClosePanel?(); model.onOpenSettings?() }
         }
         .padding(.horizontal, 2).padding(.bottom, 10)
     }
@@ -97,14 +97,13 @@ struct PanelView: View {
 extension ToastAction {
     var title: String {
         switch self {
-        case .undo: "Undo"
-        case .retry(let t, _): "Retry \(t.shortName)"
+                case .retry(let t, _): "Retry \(t.shortName)"
         }
     }
 }
 
 extension Tool {
-    var shortName: String { self == .claudeCode ? "Code" : "Desktop" }
+    var shortName: String { self == .claudeCode ? "CLI" : "Desktop" }
 }
 
 struct IconButton: View {
@@ -129,6 +128,16 @@ struct IconButton: View {
 struct AddAccountMenu: View {
     @Bindable var model: AppModel
     var body: some View {
+        if model.snapshotMode { menu } else { realMenu }
+    }
+
+    private var menu: some View {
+        Label("Add account", systemImage: "plus").font(.system(size: 12.5))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+    }
+
+    private var realMenu: some View {
         Menu {
             ForEach(Tool.allCases, id: \.self) { t in
                 if model.probes[t]?.status.allowsSwitching == true, model.detected[t] != nil {
@@ -164,7 +173,7 @@ struct EmptyAccountsView: View {
         VStack(spacing: 8) {
             Image(systemName: "arrow.triangle.branch").font(.system(size: 22)).foregroundStyle(Theme.signal)
                 .frame(width: 46, height: 46).background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
-            Text(found ? "Welcome to Swaplane" : "No accounts yet").font(.system(size: 14, weight: .semibold))
+            Text(found ? "Welcome to AI Swaplane" : "No accounts yet").font(.system(size: 14, weight: .semibold))
             Text(found ? "Switch between AI accounts in one move. Sign-ins stay in your Keychain."
                        : "Sign in to Claude, then import the account here.")
                 .font(.system(size: 12)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
@@ -203,7 +212,7 @@ private struct Link: Shape {
     func path(in r: CGRect) -> Path {
         var p = Path()
         p.move(to: CGPoint(x: 0, y: y0))
-        p.addCurve(to: CGPoint(x: 68, y: y1), control1: CGPoint(x: 34, y: y0), control2: CGPoint(x: 34, y: y1))
+        p.addCurve(to: CGPoint(x: 44, y: y1), control1: CGPoint(x: 22, y: y0), control2: CGPoint(x: 22, y: y1))
         return p
     }
 }
@@ -215,11 +224,12 @@ struct LanesView: View {
 
     var body: some View {
         let accts = model.accounts
-        let tools = Tool.allCases
-        let H = CGFloat(accts.count) * rowH
+        let tools = Tool.allCases.reversed() as [Tool]  // Desktop is the first rank
+        let H = max(CGFloat(accts.count) * rowH, CGFloat(tools.count) * 44 + 4)
         let content = ZStack(alignment: .topLeading) {
             connectors(accts, tools, H)
             VStack(spacing: 0) { ForEach(accts) { LaneRow(model: model, account: $0, flash: flash).frame(height: rowH) } }
+                .frame(maxHeight: .infinity, alignment: .top)
         }.frame(height: H)
         Group {
             if H > 236 { ScrollView(showsIndicators: false) { content }.frame(height: 236) } else { content }
@@ -233,7 +243,7 @@ struct LanesView: View {
 
     private func connectors(_ accts: [Account], _ tools: [Tool], _ H: CGFloat) -> some View {
         let m = CGFloat(tools.count)
-        func ty(_ i: Int) -> CGFloat { H * CGFloat(i + 1) / (m + 1) }
+        func ty(_ i: Int) -> CGFloat { H / 2 + (CGFloat(i) - (m - 1) / 2) * 44 }
         return ZStack(alignment: .topLeading) {
             ForEach(Array(accts.enumerated()), id: \.element.id) { i, a in
                 let y = CGFloat(i) * rowH + rowH / 2
@@ -251,16 +261,16 @@ struct LanesView: View {
             }
             ForEach(Array(tools.enumerated()), id: \.offset) { ti, t in
                 Text(t.shortName).font(.system(size: 11))
-                    .frame(width: 46, height: 22)
-                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 7))
-                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.signal, lineWidth: 1))
-                    .position(x: 68 + 23, y: ty(ti))
+                    .frame(width: 76, height: 26)
+                    .background(Theme.panel, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.signal, lineWidth: 1))
+                    .position(x: 38 + 38, y: ty(ti))
                     .opacity(model.probes[t]?.status.allowsSwitching == true ? 1 : 0.35)
             }
         }
-        .frame(width: 116, height: H, alignment: .topLeading)
+        .frame(width: 114, height: H, alignment: .topLeading)
         .frame(maxWidth: .infinity, alignment: .trailing)
-        .padding(.trailing, 6)
+        .padding(.trailing, 10)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -327,7 +337,13 @@ struct LaneRow: View {
         Task { await model.rename(account, to: t) }
     }
 
-    private var rowMenu: some View {
+    @ViewBuilder private var rowMenu: some View {
+        if model.snapshotMode {
+            Image(systemName: "ellipsis").font(.system(size: 13)).frame(width: 26, height: 26).foregroundStyle(Theme.muted)
+        } else { realRowMenu }
+    }
+
+    private var realRowMenu: some View {
         Menu {
             Button("Re-authenticate…") {
                 if let p = account.profiles[.claudeCode] ?? account.profiles.values.first {
@@ -378,7 +394,7 @@ enum UsageText {
         switch s.state {
         case .none: return ("No limit", false)
         case .unavailable where s.windows.isEmpty: return ("Usage unavailable", false)
-        case .expired where s.windows.isEmpty: return ("Open Claude Code to refresh usage", true)
+        case .expired where s.windows.isEmpty: return ("Sign-in expired", true)
         default:
             let w = s.windows.map { "\($0.name) \(Int($0.percent.rounded()))%" }.joined(separator: " · ")
             return (w, false)
@@ -396,35 +412,24 @@ struct DetailCard: View {
         let snap = model.usage[account.id]
         let color = Palette.color(account.group.colorName)
         let active = model.activeTools(account)
-        let r = model.reminder(for: account.id)
-        let hasLimits = (snap?.windows.isEmpty == false)
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 Circle().fill(color).frame(width: 11, height: 11)
                 Text(account.group.label).font(.system(size: 14, weight: .semibold))
                 Spacer()
-                Button { model.toggleReminder(account) } label: {
-                    Image(systemName: r.enabled && hasLimits ? "bell.badge.fill" : "bell").font(.system(size: 14))
-                        .foregroundStyle(r.enabled && hasLimits ? Theme.signal : Theme.muted).frame(width: 28, height: 28)
+                ForEach(active, id: \.self) { t in
+                    Text(t.shortName).font(.system(size: 10.5, weight: .medium)).foregroundStyle(Theme.signal)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Theme.signal.opacity(0.16), in: Capsule())
                 }
-                .buttonStyle(.plain).disabled(!hasLimits).opacity(hasLimits ? 1 : 0.3)
-                .help(hasLimits ? "Remind me when limits reset" : "No limits to remind about")
-                .accessibilityLabel("Reset reminder")
             }
-            Text([model.display(account.identityHint), active.isEmpty ? "Not active" : "Active on " + active.map(\.shortName).joined(separator: " + ")]
-                .compactMap { $0 }.joined(separator: " · "))
-                .font(.system(size: 11)).foregroundStyle(Theme.muted).padding(.leading, 19)
+            if let email = model.display(account.identityHint) {
+                Text(email).font(.system(size: 11)).foregroundStyle(Theme.muted).padding(.leading, 19).padding(.top, 3)
+            }
 
             usageBody(snap)
 
-            if r.enabled && hasLimits {
-                HStack(spacing: 6) {
-                    Text("Notify when it resets:").font(.system(size: 11)).foregroundStyle(Theme.muted)
-                    Chip(title: "Session", on: r.session) { model.setReminderWindow(account, session: !r.session) }
-                    Chip(title: "Weekly", on: r.weekly) { model.setReminderWindow(account, weekly: !r.weekly) }
-                }.padding(.top, 10)
-            }
-            SwitchControls(model: model, account: account).padding(.top, 10)
+            SwitchControls(model: model, account: account).padding(.top, 16)
         }
         .padding(12)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
@@ -434,28 +439,64 @@ struct DetailCard: View {
     @ViewBuilder private func usageBody(_ snap: UsageSnapshot?) -> some View {
         let color = Palette.color(account.group.colorName)
         if let snap, !snap.windows.isEmpty {
-            ForEach(snap.windows, id: \.name) { w in
+            freshness(snap)
+            ForEach(Array(snap.windows.enumerated()), id: \.element.name) { i, w in
                 VStack(spacing: 3) {
                     HStack {
                         Text(w.name).font(.system(size: 11, weight: .medium))
                         Spacer()
-                        Text("\(Int(w.percent.rounded()))% used" + (w.resetsAt.map { " · resets " + $0.formatted(.relative(presentation: .numeric, unitsStyle: .abbreviated)) } ?? ""))
+                        Text("\(Int(w.percent.rounded()))% used" + (w.resetsAt.map { " · resets " + Self.resetTime($0) } ?? ""))
                             .font(.system(size: 11)).foregroundStyle(Theme.muted)
                     }
-                    LimitBar(percent: w.percent, base: Theme.signal, motion: model.motion)
-                }.padding(.top, 9)
+                    LimitBar(percent: w.percent, base: color, motion: model.motion)
+                }.padding(.top, i == 0 ? 8 : 14)
             }
             if snap.windows.count < 2 { note("No weekly limit shown for this account.") }
-            if snap.state != .fresh { note(snap.state == .expired ? "Showing the last known usage. Open Claude Code to refresh it." : "Showing the last known usage.") }
-            Color.clear.frame(height: 0).accessibilityHidden(true).foregroundStyle(color)
+            if snap.state == .expired {
+                note("Claude Code's sign-in has expired. Run `claude` once, then check again.", icon: "arrow.triangle.2.circlepath", warn: true)
+                HStack(spacing: 8) {
+                    Chip(title: model.checkingUsage ? "Checking…" : "Check again", on: false) { Task { await model.checkUsageNow() } }
+                        .disabled(model.checkingUsage)
+                    Chip(title: "Open Terminal", on: false) { model.openTerminal() }
+                }.padding(.top, 8)
+            }
+            ReminderGroup(model: model, account: account, windows: snap.windows).padding(.top, 12)
         } else {
             switch snap?.state {
             case .none?: note("No usage limits on this account. Nothing to track.", icon: "infinity")
-            case .expired?: note("Open Claude Code to refresh usage for this account.", icon: "arrow.triangle.2.circlepath", warn: true)
+            case .expired?:
+                note("Claude Code's sign-in has expired. Run `claude` once, then check again.", icon: "arrow.triangle.2.circlepath", warn: true)
+                HStack(spacing: 8) {
+                    Chip(title: model.checkingUsage ? "Checking…" : "Check again", on: false) { Task { await model.checkUsageNow() } }
+                        .disabled(model.checkingUsage)
+                    Chip(title: "Open Terminal", on: false) { model.openTerminal() }
+                }.padding(.top, 8)
             case .unavailable?: note("Usage unavailable right now. Switching still works.", icon: "icloud.slash")
             default: note("Usage appears after this account has been active.", icon: "chart.bar")
             }
         }
+    }
+
+    /// "Updated just now" / "Updated 12 min ago · last known", with a refresh button for the live account.
+    private func freshness(_ snap: UsageSnapshot) -> some View {
+        let mins = Int(Date().timeIntervalSince(snap.fetchedAt) / 60)
+        let age = mins < 1 ? "just now" : mins < 60 ? "\(mins) min ago" : "\(mins / 60) hr ago"
+        let text = "Updated \(age)" + (snap.state == .fresh ? "" : " · last known")
+        return HStack(spacing: 4) {
+            Text(text).font(.system(size: 11)).foregroundStyle(Theme.muted)
+            if model.isActive(account, on: .claudeCode) { RefreshButton(busy: model.checkingUsage) { Task { await model.checkUsageNow() } } }
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 19).padding(.top, 6)
+    }
+
+    /// Clock time of the reset: "4:30 PM" today, "Tomorrow 4:30 PM", otherwise "Mon 4:30 PM".
+    static func resetTime(_ d: Date) -> String {
+        let time = d.formatted(date: .omitted, time: .shortened)
+        let cal = Calendar.current
+        if cal.isDateInToday(d) { return time }
+        if cal.isDateInTomorrow(d) { return "tomorrow " + time }
+        return d.formatted(.dateTime.weekday(.abbreviated)) + " " + time
     }
 
     private func note(_ s: String, icon: String? = nil, warn: Bool = false) -> some View {
@@ -466,13 +507,138 @@ struct DetailCard: View {
     }
 }
 
+/// Bell that shakes whenever `trigger` changes.
+struct ShakeBell: View {
+    let symbol: String
+    let on: Bool
+    let size: CGFloat
+    let trigger: Int
+    var body: some View {
+        Image(systemName: symbol).font(.system(size: size))
+            .foregroundStyle(on ? Theme.signal : Theme.muted)
+            .keyframeAnimator(initialValue: 0.0, trigger: trigger) { icon, angle in
+                icon.rotationEffect(.degrees(angle), anchor: .top)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    CubicKeyframe(18, duration: 0.07)
+                    CubicKeyframe(-16, duration: 0.11)
+                    CubicKeyframe(12, duration: 0.10)
+                    CubicKeyframe(-8, duration: 0.09)
+                    CubicKeyframe(4, duration: 0.08)
+                    CubicKeyframe(0, duration: 0.07)
+                }
+            }
+    }
+}
+
+/// Orange switch with a white knob in both appearances.
+struct ToggleSwitch: View {
+    let on: Bool
+    let motion: Bool
+    var body: some View {
+        Capsule().fill(on ? Theme.signal : Theme.track).frame(width: 33, height: 20)
+            .overlay(alignment: on ? .trailing : .leading) {
+                Circle().fill(.white).frame(width: 16, height: 16).shadow(color: .black.opacity(0.3), radius: 1, y: 1).padding(2)
+            }
+            .animation(motion ? .easeOut(duration: 0.15) : nil, value: on)
+    }
+}
+
+/// Compact group: one header and a Session / Weekly switch row for each usage window.
+struct ReminderGroup: View {
+    @Bindable var model: AppModel
+    let account: Account
+    let windows: [UsageWindow]
+    @State private var headerShakes = 0
+
+    var body: some View {
+        let any = windows.contains { model.windowReminder(account, $0.name) }
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                ShakeBell(symbol: any ? "bell.fill" : "bell", on: any, size: 11, trigger: headerShakes)
+                Text("Notify me when limits reset").font(.system(size: 11)).foregroundStyle(any ? Theme.signal : Theme.muted)
+                Spacer()
+            }
+            .padding(.horizontal, 10).padding(.top, 7).padding(.bottom, 5)
+            ForEach(windows, id: \.name) { w in
+                Divider().overlay(Theme.line)
+                ReminderToggleRow(name: w.name, resetsAt: w.resetsAt, on: model.windowReminder(account, w.name), motion: model.motion) {
+                    let was = model.windowReminder(account, w.name)
+                    model.toggleWindowReminder(account, w.name)
+                    if !was && model.motion { headerShakes += 1 }
+                }
+            }
+        }
+        .background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+struct ReminderToggleRow: View {
+    let name: String
+    let resetsAt: Date?
+    let on: Bool
+    let motion: Bool
+    let action: () -> Void
+    @State private var shakes = 0
+
+    var body: some View {
+        Button {
+            if !on && motion { shakes += 1 }
+            action()
+        } label: {
+            HStack(spacing: 8) {
+                ShakeBell(symbol: on ? "bell.badge.fill" : "bell", on: on, size: 14, trigger: shakes).frame(width: 20)
+                Text(name).font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.fg)
+                Text(subtitle).font(.system(size: 10.5)).foregroundStyle(Theme.muted).lineLimit(1)
+                Spacer(minLength: 0)
+                ToggleSwitch(on: on, motion: motion)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(name) reset reminder")
+        .accessibilityValue(on ? "On" : "Off")
+        .accessibilityAddTraits(.isToggle)
+    }
+
+    private var subtitle: String {
+        on ? (resetsAt.map { "On · notify at " + DetailCard.resetTime($0) } ?? "On") : "Off"
+    }
+}
+
+/// Small refresh icon button; spins while refreshing.
+struct RefreshButton: View {
+    let busy: Bool
+    let action: () -> Void
+    @State private var hover = false
+    @State private var angle = 0.0
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .medium))
+                .rotationEffect(.degrees(angle))
+                .frame(width: 18, height: 18)
+                .background(hover && !busy ? Theme.hover : .clear, in: RoundedRectangle(cornerRadius: 5))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).foregroundStyle(busy ? Theme.signal : hover ? Theme.fg : Theme.muted)
+        .disabled(busy).onHover { hover = $0 }
+        .help("Refresh usage").accessibilityLabel("Refresh usage")
+        .onChange(of: busy) {
+            if busy { withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) { angle = 360 } }
+            else { withAnimation(.none) { angle = 0 } }
+        }
+    }
+}
+
 struct Chip: View {
     let title: String
     let on: Bool
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).font(.system(size: 11)).padding(.horizontal, 9).padding(.vertical, 2)
+            Text(title).font(.system(size: 11)).padding(.horizontal, 14).padding(.vertical, 5)
                 .background(on ? Theme.signal.opacity(0.16) : .clear, in: Capsule())
                 .overlay(Capsule().strokeBorder(on ? Theme.signal : Theme.line))
         }.buttonStyle(.plain).foregroundStyle(on ? Theme.fg : Theme.muted)
@@ -512,13 +678,14 @@ struct SwitchControls: View {
                 Text("This is your only account. Add another to start switching.")
                     .font(.system(size: 11.5)).foregroundStyle(Theme.muted).frame(maxWidth: .infinity, alignment: .leading)
             } else if cands.isEmpty {
-                Text("Active on \(account.tools.count > 1 ? "both tools" : "this tool")")
-                    .font(.system(size: 13)).foregroundStyle(Theme.muted).frame(maxWidth: .infinity).padding(.vertical, 8)
+                Label("Already active", systemImage: "checkmark")
+                    .font(.system(size: 13)).foregroundStyle(Theme.muted).frame(maxWidth: .infinity).frame(height: 34)
                     .background(Theme.hover, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
             } else {
                 if cands.count > 1 { selector(cands) }
                 HoldToSwitchButton(
-                    title: tools.count == account.tools.count && tools.count > 1 ? "Hold to switch both" : "Hold to switch \(tools.map(\.shortName).joined(separator: " + "))",
+                    title: "Hold to switch \(tools.map(\.shortName).joined(separator: " + ")) to \(account.group.label)",
                     motion: model.motion, enabled: !model.busy
                 ) { Task { await model.switchSelected() } }
                 .padding(.top, cands.count > 1 ? 8 : 0)
@@ -567,7 +734,7 @@ struct HoldToSwitchButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
             Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.ink).frame(maxWidth: .infinity)
         }
-        .frame(height: 34)
+                .frame(height: 34)
         .scaleEffect(holding && motion ? 0.985 : 1)
         .opacity(enabled ? 1 : 0.5)
         .contentShape(Rectangle())

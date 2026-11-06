@@ -29,7 +29,7 @@ case "list":
         let data = (try? JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted, .sortedKeys])) ?? Data("[]".utf8)
         print(String(decoding: data, as: UTF8.self))
     } else if profiles.isEmpty {
-        print("No profiles yet. Open Swaplane from the menu bar to import one.")
+        print("No profiles yet. Open AI Swaplane from the menu bar to import one.")
     } else {
         for p in profiles.sorted(by: { ($0.tool.rawValue, $0.label) < ($1.tool.rawValue, $1.label) }) {
             print("\(state.active[p.tool.rawValue] == p.id ? "*" : " ") \(p.tool.rawValue)\t\(p.label)")

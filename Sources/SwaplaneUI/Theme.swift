@@ -139,12 +139,12 @@ enum MenuBarIcon {
     static func image(
         primary: NSColor?, secondary: NSColor?, session: Double?, weekly: Double?
     ) -> NSImage {
-        let img = NSImage(size: NSSize(width: 36, height: 18), flipped: true) { _ in
+        let img = NSImage(size: NSSize(width: 46, height: 22), flipped: true) { _ in
             let ink = NSColor.labelColor
-            let s: CGFloat = 0.8, ox: CGFloat = 0.5
+            let s: CGFloat = 1.0, ox: CGFloat = 0.5
             func pt(_ x: CGFloat, _ y: CGFloat) -> NSPoint { NSPoint(x: ox + x * s, y: y * s) }
             let g = NSBezierPath()
-            g.lineWidth = 1.6; g.lineCapStyle = .round
+            g.lineWidth = 1.9; g.lineCapStyle = .round
             g.move(to: pt(3, 11)); g.line(to: pt(8, 11))
             g.curve(to: pt(14, 6), controlPoint1: pt(11, 11), controlPoint2: pt(11, 6)); g.line(to: pt(19, 6))
             g.move(to: pt(8, 11))
@@ -153,19 +153,19 @@ enum MenuBarIcon {
             func dot(_ c: NSColor?, _ y: CGFloat) {
                 guard let c else { return }
                 c.setFill()
-                NSBezierPath(ovalIn: NSRect(x: ox + 19 * s - 2.1, y: y * s - 2.1, width: 4.2, height: 4.2)).fill()
+                NSBezierPath(ovalIn: NSRect(x: ox + 19 * s - 2.6, y: y * s - 2.6, width: 5.2, height: 5.2)).fill()
             }
             dot(primary, 6); dot(secondary ?? primary, 16)
             func bar(_ v: Double?, y: CGFloat) {
-                let r = NSRect(x: 21, y: y, width: 14, height: 3.5)
+                let r = NSRect(x: 25, y: y, width: 19, height: 4.5)
                 ink.withAlphaComponent(0.25).setFill()
-                NSBezierPath(roundedRect: r, xRadius: 1.75, yRadius: 1.75).fill()
+                NSBezierPath(roundedRect: r, xRadius: 2.25, yRadius: 2.25).fill()
                 guard let v, let base = primary else { return }
                 Theme.limitNS(v, base: base).setFill()
-                let w = max(3.5, r.width * CGFloat(min(100, max(0, v)) / 100))
-                NSBezierPath(roundedRect: NSRect(x: r.minX, y: r.minY, width: w, height: r.height), xRadius: 1.75, yRadius: 1.75).fill()
+                let w = max(4.5, r.width * CGFloat(min(100, max(0, v)) / 100))
+                NSBezierPath(roundedRect: NSRect(x: r.minX, y: r.minY, width: w, height: r.height), xRadius: 2.25, yRadius: 2.25).fill()
             }
-            bar(session, y: 4.5); bar(weekly, y: 10.5)
+            bar(session, y: 5.5); bar(weekly, y: 12)
             return true
         }
         img.isTemplate = false

@@ -67,3 +67,7 @@ Data model → theme and panel → lanes and detail card → hold to switch → 
 Built: account groups + migration + `switchGroup` (tested), usage service with cache and honest states (tested; endpoint shape unverified, see SPIKE-0-FINDINGS.md), themed panel with connector lanes, ⋯ menus (re-authenticate, re-import, rename, colour, remove), detail card, hold to switch with Both/only selector, Undo and partial-failure actions, twin-bars menu bar icon, synthesised sounds, reduced motion, appearance override, settings-only window, add/re-authenticate window, welcome import, reminder notifications.
 
 Not verified on a real screen: the panel was rendered to PNGs with synthetic data (`SwaplaneApp --snapshot <dir>`), but hold-to-switch timing, the NSPanel position on external displays, sounds, notifications and the Keychain prompt for reading the Claude Code token have not been exercised by hand. Provider tabs and OpenAI wiring wait for v0.3.
+
+## 11. Naming (2026-11-06)
+
+The product name shown to users is **AI Swaplane** (panel title, window titles, About, notifications, tooltip, Quit item, CLI text, bundle display name, `AI Swaplane.app`). Kept unchanged on purpose so saved data and Keychain permissions survive: bundle id `app.swaplane.mac`, SwiftPM module and target names, the `swaplane` CLI, the data folder `Application Support/Swaplane`, and Keychain service names.

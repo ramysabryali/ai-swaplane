@@ -6,15 +6,53 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var model: AppModel
 
-    var body: some View {
-        TabView {
-            GeneralTab(model: model).tabItem { Label("General", systemImage: "gearshape") }
-            SafetyTab(model: model).tabItem { Label("Safety", systemImage: "lock.shield") }
-            ToolsTab(model: model).tabItem { Label("Tools", systemImage: "wrench.and.screwdriver") }
-            ActivityTab(model: model).tabItem { Label("Activity", systemImage: "clock") }
-            AboutTab().tabItem { Label("About", systemImage: "info.circle") }
+    private enum Pane: String, CaseIterable, Identifiable {
+        case general = "General", safety = "Safety", tools = "Tools", activity = "Activity", about = "About"
+        var id: String { rawValue }
+        var symbol: String {
+            switch self {
+            case .general: "gearshape"
+            case .safety: "lock.shield"
+            case .tools: "wrench.and.screwdriver"
+            case .activity: "clock"
+            case .about: "info.circle"
+            }
         }
-        .frame(width: 560, height: 380)
+    }
+    @State private var pane: Pane = .general
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                ForEach(Pane.allCases) { p in
+                    Button { pane = p } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: p.symbol).font(.system(size: 17, weight: .regular)).frame(height: 20)
+                            Text(p.rawValue).font(.system(size: 11, weight: pane == p ? .semibold : .regular))
+                        }
+                        .frame(width: 70, height: 48)
+                        .foregroundStyle(pane == p ? Theme.signal : Color.secondary)
+                        .background(pane == p ? Theme.signal.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 10))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(p.rawValue)
+                    .accessibilityAddTraits(pane == p ? .isSelected : [])
+                }
+            }
+            .padding(.top, 16).padding(.bottom, 8)
+            Divider()
+            Group {
+                switch pane {
+                case .general: GeneralTab(model: model)
+                case .safety: SafetyTab(model: model)
+                case .tools: ToolsTab(model: model)
+                case .activity: ActivityTab(model: model)
+                case .about: AboutTab()
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .frame(width: 480, height: 508)
         .task { await model.reload() }
     }
 }
@@ -39,7 +77,7 @@ private struct GeneralTab: View {
             Section("Feedback") {
                 Toggle("Play sounds", isOn: $model.soundEnabled)
                 Toggle("Reduce motion", isOn: $model.reduceMotionSetting)
-                Text("Swaplane also follows the macOS Reduce Motion setting.").font(.caption).foregroundStyle(.secondary)
+                Text("AI Swaplane also follows the macOS Reduce Motion setting.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Usage") {
                 Toggle("Show usage limits", isOn: $model.usageEnabled)
@@ -56,9 +94,9 @@ private struct SafetyTab: View {
         Form {
             Toggle("Mask email addresses", isOn: $model.maskEmails)
             Section("How your accounts are kept") {
-                Text("Credentials are sealed with AES-256-GCM. The keys live in your Keychain. Swaplane never writes a token to disk in plain text, and it never refreshes tokens itself.")
+                Text("Credentials are sealed with AES-256-GCM. The keys live in your Keychain. AI Swaplane never writes a token to disk in plain text, and it never refreshes tokens itself.")
                     .font(.callout).foregroundStyle(.secondary)
-                Text("Switching needs a deliberate hold, and every switch can be undone for a few seconds.")
+                Text("Switching needs a deliberate hold, so a stray click never changes your accounts.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Button("Reveal data folder in Finder") { NSWorkspace.shared.activateFileViewerSelecting([Paths().supportDir]) }
@@ -103,11 +141,23 @@ private struct ActivityTab: View {
 
 private struct AboutTab: View {
     var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "arrow.triangle.branch").font(.system(size: 34)).foregroundStyle(Theme.signal)
-            Text("Swaplane").font(.title2.bold())
-            Text("Version 0.2 (development)").foregroundStyle(.secondary)
-            Text("Switch between AI accounts safely. No telemetry.").font(.callout).foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            Image(systemName: "arrow.triangle.branch").font(.system(size: 64)).foregroundStyle(Theme.signal)
+            VStack(spacing: 8) {
+                Text("AI Swaplane").font(.system(size: 34, weight: .bold))
+                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")").foregroundStyle(.secondary)
+            }.padding(.top, 14)
+            Text("Switch between AI accounts safely. No telemetry.")
+                .font(.system(size: 15)).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 20)
+            VStack(spacing: 8) {
+                Text("Made by Ramy Sabry").font(.system(size: 13, weight: .medium))
+                Text("Open source under the MIT License.").font(.system(size: 12)).foregroundStyle(.secondary)
+                Link(destination: URL(string: "https://github.com/ramysabryali/ai-swaplane")!) {
+                    Label("GitHub source", systemImage: "arrow.up.right").labelStyle(TrailingIconLabelStyle())
+                        .font(.system(size: 12.5, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 7)
+                        .overlay(Capsule().strokeBorder(Theme.line))
+                }.buttonStyle(.plain).padding(.top, 10)
+            }.padding(.top, 28)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -133,62 +183,87 @@ struct ImportWizardView: View {
     }
     private var attachable: [Account] { model.accounts.filter { $0.profiles[tool] == nil } }
 
+    private var title: String {
+        if let r = reauth { return "Re-authenticate \(model.accounts.first { $0.id == r.groupID }?.group.label ?? r.label)" }
+        return "Add an account"
+    }
+    private var subtitle: String {
+        reauth != nil ? "Replace the saved sign-in for this account." : "Save a signed-in account so you can switch to it later."
+    }
+    private var canSave: Bool {
+        if busy { return false }
+        if reauth != nil { return waiting }
+        let nameOK = attach != nil || !label.trimmingCharacters(in: .whitespaces).isEmpty
+        return nameOK && (waiting || detected != nil)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(reauth != nil ? "Re-authenticate \(model.accounts.first { $0.id == reauth?.groupID }?.group.label ?? reauth!.label)" : "Add an account")
-                .font(.title2.bold())
-            if reauth == nil {
-                Picker("Tool", selection: $tool) { ForEach(Tool.allCases, id: \.self) { Text($0.displayName).tag($0) } }
-                    .pickerStyle(.segmented).disabled(waiting)
-            }
-            if waiting {
-                Label("\(tool.displayName) is signed out. Sign in with \(reauth != nil ? "the same account" : "the other account"), then click Save.",
-                      systemImage: "person.badge.key")
-                    .padding(10).background(.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-            } else if reauth != nil {
-                Text("Swaplane signs \(tool.displayName) out, you sign in again, and the new sign-in replaces the saved one for this account.")
-                    .foregroundStyle(.secondary)
-            } else if !installed {
-                Text("\(tool.displayName) isn't installed on this Mac.").foregroundStyle(.secondary)
-            } else if let d = detected {
-                GroupBox("Currently signed in") {
-                    VStack(alignment: .leading) {
-                        Text(model.display(d.displayHint) ?? "Signed in (email unknown)")
-                        if let o = d.organization { Text(o).font(.caption).foregroundStyle(.secondary) }
-                    }.frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                Text("Not signed in to \(tool.displayName).").foregroundStyle(.secondary)
-            }
-
-            if reauth == nil {
-                Picker("Account", selection: $attach) {
-                    Text("New account").tag(UUID?.none)
-                    ForEach(attachable) { Text("Add to \($0.group.label)").tag(UUID?.some($0.id)) }
-                }
-                if attach == nil {
-                    TextField("Name (for example Work)", text: $label)
-                    Picker("Colour", selection: $color) { ForEach(Palette.names, id: \.self) { Text($0.capitalized).tag($0) } }
-                }
-                if !waiting, let m = existingMatch {
-                    Label("This account is already saved as “\(m.label)”. Importing again creates a separate account with its own state.",
-                          systemImage: "info.circle").font(.caption).foregroundStyle(.orange)
-                }
-            }
-            Text("Saved to your Keychain-protected vault, encrypted on disk. Nothing is uploaded.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let e = model.errorMessage { Text(e).font(.caption).foregroundStyle(.red) }
-
-            HStack {
-                if !waiting {
-                    Button(reauth != nil ? "Sign out and sign in again…" : "Sign in with another account…") {
-                        busy = true
-                        Task { _ = await model.beginEmpty(tool: tool); busy = false }
-                    }.disabled(!installed || busy)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.triangle.branch").font(.system(size: 20)).foregroundStyle(Theme.signal)
+                    .frame(width: 42, height: 42).background(Theme.signal.opacity(0.14), in: RoundedRectangle(cornerRadius: 11))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).font(.system(size: 17, weight: .semibold))
+                    Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
                 }
                 Spacer()
+            }
+            .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 14)
+            Divider()
+            Form {
+                if reauth == nil {
+                    Picker("Tool", selection: $tool) { ForEach(Tool.allCases, id: \.self) { Text($0.displayName).tag($0) } }
+                        .pickerStyle(.segmented).disabled(waiting)
+                }
+                Section("Sign-in") {
+                    if waiting {
+                        Label("\(tool.displayName) is signed out. Sign in with \(reauth != nil ? "the same account" : "the other account"), then click Save.",
+                              systemImage: "person.badge.key").foregroundStyle(Theme.signal)
+                    } else if reauth != nil {
+                        Text("AI Swaplane signs \(tool.displayName) out, you sign in again, and the new sign-in replaces the saved one for this account.")
+                            .foregroundStyle(.secondary)
+                    } else if !installed {
+                        Text("\(tool.displayName) isn't installed on this Mac.").foregroundStyle(.secondary)
+                    } else if let d = detected {
+                        LabeledContent("Currently signed in", value: model.display(d.displayHint) ?? "Signed in (email unknown)")
+                        if let o = d.organization { LabeledContent("Organisation", value: o) }
+                    } else {
+                        Text("Not signed in to \(tool.displayName).").foregroundStyle(.secondary)
+                    }
+                    if !waiting {
+                        Button(reauth != nil ? "Sign out and sign in again…" : "Sign in with another account…") {
+                            busy = true
+                            Task { _ = await model.beginEmpty(tool: tool); busy = false }
+                        }.disabled(!installed || busy)
+                    }
+                }
+                if reauth == nil {
+                    Section("Account") {
+                        Picker("Save as", selection: $attach) {
+                            Text("New account").tag(UUID?.none)
+                            ForEach(attachable) { Text("Add to \($0.group.label)").tag(UUID?.some($0.id)) }
+                        }
+                        if attach == nil {
+                            TextField("Name", text: $label, prompt: Text("For example Work"))
+                            Picker("Colour", selection: $color) { ForEach(Palette.names, id: \.self) { Text($0.capitalized).tag($0) } }
+                        }
+                        if !waiting, let m = existingMatch {
+                            Label("Already saved as “\(m.label)”. Importing again creates a separate account with its own state.",
+                                  systemImage: "info.circle").font(.caption).foregroundStyle(Theme.warn)
+                        }
+                    }
+                }
+                Text("Saved to your Keychain-protected vault, encrypted on disk. Nothing is uploaded.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let e = model.errorMessage { Text(e).font(.caption).foregroundStyle(Theme.danger) }
+            }
+            .formStyle(.grouped)
+            Divider()
+            HStack {
+                Spacer()
                 Button("Cancel") { model.pendingEmptyTool = nil; model.reauthProfile = nil; close() }
-                Button(waiting ? "Save" : reauth != nil ? "Save" : "Import") {
+                    .controlSize(.large)
+                Button(waiting || reauth != nil ? "Save" : "Import") {
                     busy = true
                     Task {
                         let ok: Bool
@@ -203,10 +278,12 @@ struct ImportWizardView: View {
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(busy || (reauth != nil ? !waiting : ((attach == nil && label.trimmingCharacters(in: .whitespaces).isEmpty) || (!waiting && detected == nil))))
+                .buttonStyle(.borderedProminent).tint(Theme.signal).controlSize(.large)
+                .disabled(!canSave)
             }
+            .padding(.horizontal, 22).padding(.vertical, 14)
         }
-        .padding(22).frame(width: 460)
+        .frame(width: 480, height: reauth != nil ? 470 : 658)
         .onAppear {
             model.errorMessage = nil
             if let r = reauth { tool = r.tool } else { tool = model.wizardTool }
@@ -217,5 +294,11 @@ struct ImportWizardView: View {
         }
         .onChange(of: tool) { attach = nil }
         .task { await model.reload() }
+    }
+}
+
+private struct TrailingIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) { configuration.title; configuration.icon.font(.system(size: 10, weight: .bold)) }
     }
 }
