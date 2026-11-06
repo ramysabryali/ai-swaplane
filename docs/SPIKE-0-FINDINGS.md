@@ -70,3 +70,15 @@
 4. Obtain a second Codex/ChatGPT account to test `auth.json` swap on the Codex desktop app.
 5. Test Claude usage endpoint with a throwaway/own token in a controlled run; confirm response shape.
 6. Verify external-display status item behavior on hardware.
+
+## Usage spike (2026-11-06, approved)
+
+One read-only call from a script (token read from the `Claude Code-credentials` Keychain item, never printed):
+
+- Credential JSON keys: `accessToken, expiresAt, rateLimitTier, refreshToken, refreshTokenExpiresAt, scopes, subscriptionType`. `subscriptionType` is present (e.g. `pro`).
+- `GET https://api.anthropic.com/api/oauth/usage` with `Authorization: Bearer <access token>` and `anthropic-beta: oauth-2025-04-20` **answers** (HTTP 401, `authentication_error`) — the endpoint exists and is reachable.
+- The live access token had **already expired** (the CLI refreshes lazily when it next runs). So a successful response, and therefore the **JSON shape, is still unverified**; the parser assumes `five_hour` / `seven_day` objects with `utilization` and `resets_at` (community-reported shape).
+- Consequence for the design: saved tokens of inactive accounts will usually be expired, and Swaplane must not refresh them. Usage is therefore fetched only for the account live in Claude Code (when its token is valid), cached per account, and shown as "last known" for the others. When the live token is expired the UI says "Open Claude Code to refresh usage".
+- To verify the shape: run `claude` once (it refreshes its token), then re-run the spike within the token lifetime.
+
+Decisions log: usage states are `fresh / stale / expired / unavailable / none`; refreshing tokens remains out of scope until rotation behaviour is tested.

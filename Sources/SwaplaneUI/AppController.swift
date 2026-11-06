@@ -3,92 +3,141 @@ import Adapters
 import SwaplaneCore
 import SwiftUI
 import SwitchEngine
+import Usage
 import Vault
 
+/// Borderless floating panel that can take key focus (for Esc and keyboard hold).
+final class KeyPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+    var onCancel: (() -> Void)?
+    override func cancelOperation(_ sender: Any?) { onCancel?() }
+}
+
+/// Settings window and the small add/re-authenticate window.
 @MainActor
-final class MainWindowController: NSObject, NSWindowDelegate {
-    private var window: NSWindow?
+final class WindowsController: NSObject, NSWindowDelegate {
+    private var settings: NSWindow?
+    private var wizard: NSWindow?
     private let model: AppModel
     init(model: AppModel) { self.model = model }
 
-    func show() {
-        if window == nil {
-            let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            w.title = "Swaplane"
-            w.contentViewController = NSHostingController(rootView: MainWindowView(model: model))
+    func showSettings() {
+        if settings == nil {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            w.title = "Swaplane Settings"
+            w.contentViewController = NSHostingController(rootView: SettingsView(model: model))
             w.isReleasedWhenClosed = false
             w.delegate = self
-            if !w.setFrameUsingName("SwaplaneMain") { w.center() }
-            w.setFrameAutosaveName("SwaplaneMain")
-            window = w
+            w.center()
+            settings = w
         }
-        ensureOnScreen()
+        present(settings)
+    }
+
+    func showWizard() {
+        let hosting = NSHostingController(rootView: ImportWizardView(model: model) { [weak self] in self?.closeWizard() })
+        if wizard == nil {
+            let w = NSWindow(contentViewController: hosting)
+            w.styleMask = [.titled, .closable]
+            w.title = "Swaplane"
+            w.isReleasedWhenClosed = false
+            w.delegate = self
+            w.center()
+            wizard = w
+        } else { wizard?.contentViewController = hosting }
+        present(wizard)
+    }
+
+    func closeWizard() { model.showWizard = false; wizard?.close() }
+
+    private func present(_ w: NSWindow?) {
+        guard let w else { return }
+        if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(w.frame) }) { w.center() }
         NSApp.setActivationPolicy(.regular)
-        window?.makeKeyAndOrderFront(nil)
+        w.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    /// If the display the window was on is gone, bring it back to the main screen.
-    func ensureOnScreen() {
-        guard let w = window else { return }
-        if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(w.frame) }) {
-            if let main = NSScreen.main {
-                var f = w.frame
-                f.origin = NSPoint(x: main.visibleFrame.midX - f.width / 2, y: main.visibleFrame.midY - f.height / 2)
-                w.setFrame(f, display: true)
-            } else { w.center() }
+    func windowWillClose(_ notification: Notification) {
+        if (notification.object as? NSWindow) === wizard { model.pendingEmptyTool = nil; model.reauthProfile = nil; model.showWizard = false }
+        DispatchQueue.main.async { [weak self] in
+            let open = [self?.settings, self?.wizard].compactMap { $0 }.contains { $0.isVisible }
+            if !open { NSApp.setActivationPolicy(.accessory) }
         }
     }
 
-    func windowWillClose(_ notification: Notification) { NSApp.setActivationPolicy(.accessory) }
+    func ensureOnScreen() { for w in [settings, wizard].compactMap({ $0 }) where !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(w.frame) }) { w.center() } }
 }
 
 @MainActor
 final class StatusItemController: NSObject {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    private let popover = NSPopover()
+    private let panel: KeyPanel
+    private let host: NSHostingController<PanelView>
     private let model: AppModel
-    private let main: MainWindowController
+    private let windows: WindowsController
+    private var monitors: [Any] = []
+    private var sizeObs: NSKeyValueObservation?
 
-    init(model: AppModel, main: MainWindowController) {
+    init(model: AppModel, windows: WindowsController) {
         self.model = model
-        self.main = main
+        self.windows = windows
+        host = NSHostingController(rootView: PanelView(model: model))
+        host.sizingOptions = [.preferredContentSize]
+        panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300),
+                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: true)
         super.init()
-        popover.behavior = .transient
-        popover.contentViewController = NSHostingController(rootView: PopoverView(model: model))
+        panel.contentViewController = host
+        panel.isFloatingPanel = true
+        panel.level = .statusBar
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = true
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.onCancel = { [weak self] in self?.close() }
+        sizeObs = host.observe(\.preferredContentSize, options: [.new]) { [weak self] _, _ in
+            MainActor.assumeIsolated { self?.resize() }
+        }
         if let b = item.button {
-            b.image = NSImage(systemSymbolName: "arrow.left.arrow.right.circle", accessibilityDescription: "Swaplane")
-            b.image?.isTemplate = true
             b.target = self
             b.action = #selector(clicked(_:))
             b.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
-        model.onChange = { [weak self] in self?.refreshAccessibility() }
-        // Displays added/removed: close the popover and make sure the window is still reachable.
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.popover.performClose(nil)
-                self?.main.ensureOnScreen()
-            }
+        model.onChange = { [weak self] in self?.refreshIcon() }
+        model.onClosePanel = { [weak self] in self?.close() }
+        refreshIcon()
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.close(); self?.windows.ensureOnScreen() }
         }
     }
 
-    private func refreshAccessibility() {
-        let names = Tool.allCases.compactMap { t in model.activeProfile(for: t).map { "\(t.displayName): \($0.label)" } }
-        let text = names.isEmpty ? "Swaplane" : "Swaplane — " + names.joined(separator: ", ")
+    // MARK: Icon
+
+    private func refreshIcon() {
+        let code = model.activeAccount(for: .claudeCode)
+        let desk = model.activeAccount(for: .claudeDesktop)
+        let primary = (code ?? desk).map { Palette.ns($0.group.colorName) }
+        let second: NSColor? = (code != nil && desk != nil && code?.id != desk?.id) ? Palette.ns(desk!.group.colorName) : nil
+        let snap = (code ?? desk).flatMap { model.usage[$0.id] }
+        item.button?.image = MenuBarIcon.image(primary: primary, secondary: second, session: snap?.session?.percent, weekly: snap?.weekly?.percent)
+        let names = Tool.allCases.compactMap { t in model.activeAccount(for: t).map { "\(t.shortName): \($0.group.label)" } }
+        var text = names.isEmpty ? "Swaplane" : "Swaplane — " + names.joined(separator: ", ")
+        if let s = snap?.session { text += ", session \(Int(s.percent.rounded())) percent" }
+        if let w = snap?.weekly { text += ", weekly \(Int(w.percent.rounded())) percent" }
         item.button?.toolTip = text
         item.button?.setAccessibilityLabel(text)
     }
 
+    // MARK: Panel
+
     @objc private func clicked(_ sender: NSStatusBarButton) {
         let e = NSApp.currentEvent
         if e?.type == .rightMouseUp || e?.modifierFlags.contains(.option) == true {
+            close()
             let menu = NSMenu()
-            menu.addItem(withTitle: "Open Swaplane…", action: #selector(openMain), keyEquivalent: "").target = self
+            menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
             menu.addItem(.separator())
             menu.addItem(withTitle: "Quit Swaplane", action: #selector(quit), keyEquivalent: "q").target = self
             item.menu = menu
@@ -96,23 +145,59 @@ final class StatusItemController: NSObject {
             item.menu = nil
             return
         }
-        if popover.isShown { popover.performClose(nil) }
-        else {
-            // NSPopover positions itself on the screen that owns the status item button and clamps to its visible frame.
-            popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
-        }
+        panel.isVisible ? close() : open()
     }
 
-    @objc private func openMain() { popover.performClose(nil); main.show() }
+    private func open() {
+        NSApp.appearance = model.appearance.nsAppearance
+        resize()
+        panel.orderFrontRegardless()
+        panel.makeKey()
+        monitors = [
+            NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                MainActor.assumeIsolated { self?.close() }
+            } as Any,
+            NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
+                MainActor.assumeIsolated {
+                    // Clicking the status item toggles; clicks elsewhere in another window close.
+                    if let self, e.window !== self.panel, e.window !== self.item.button?.window { self.close() }
+                }
+                return e
+            } as Any,
+        ]
+    }
+
+    private func close() {
+        panel.orderOut(nil)
+        monitors.forEach { NSEvent.removeMonitor($0) }
+        monitors = []
+    }
+
+    /// Anchors under the status item on the screen that owns it, clamped to that screen's visible frame.
+    private func resize() {
+        guard let button = item.button, let bw = button.window else { return }
+        let size = host.preferredContentSize
+        guard size.width > 0, size.height > 0 else { return }
+        let screen = bw.screen ?? NSScreen.main ?? NSScreen.screens[0]
+        let vis = screen.visibleFrame
+        let anchor = bw.frame
+        let h = min(size.height, vis.height - 12)
+        var x = anchor.midX - size.width / 2
+        x = max(vis.minX + 8, min(x, vis.maxX - size.width - 8))
+        let y = max(vis.minY + 8, anchor.minY - 6 - h)
+        panel.setFrame(NSRect(x: x, y: y, width: size.width, height: h), display: true)
+    }
+
+    @objc private func openSettings() { windows.showSettings() }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 
 @MainActor
 public final class AppDelegate: NSObject, NSApplicationDelegate {
     private var status: StatusItemController?
-    private var main: MainWindowController?
+    private var windows: WindowsController?
     private var model: AppModel?
+    private var timer: Timer?
 
     public override init() { super.init() }
 
@@ -124,18 +209,24 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
             paths: paths, vault: vault,
             adapters: [ClaudeCodeAdapter(paths: paths, keychain: keychain), ClaudeDesktopAdapter(paths: paths)],
             processes: AppKitProcessController())
-        let model = AppModel(engine: engine, vault: vault)
-        let main = MainWindowController(model: model)
-        model.onOpenMainWindow = { [weak main] in main?.show() }
+        let usage = UsageService(paths: paths, keychain: keychain)
+        let model = AppModel(engine: engine, vault: vault, usage: usage)
+        NSApp.appearance = model.appearance.nsAppearance
+        let windows = WindowsController(model: model)
+        model.onOpenSettings = { [weak windows] in windows?.showSettings() }
+        model.onOpenWizard = { [weak windows] in windows?.showWizard() }
         model.onQuit = { NSApp.terminate(nil) }
         self.model = model
-        self.main = main
-        self.status = StatusItemController(model: model, main: main)
+        self.windows = windows
+        self.status = StatusItemController(model: model, windows: windows)
 
         Task {
             _ = await engine.recoverIfNeeded()
             await model.reload()
-            if model.profiles.isEmpty { model.showWizard = true; main.show() }
+            await model.refreshUsage()
+        }
+        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak model] _ in
+            Task { @MainActor in await model?.reload(); await model?.refreshUsage() }
         }
     }
 

@@ -61,3 +61,9 @@ Lanes. Midnight `#0B1220`, Ink `#121B2B`, Rail `#E8EEF7`, signal orange. SF Pro;
 
 ## 9. Implementation order
 Data model → theme and panel → lanes and detail card → hold to switch → twin-bars icon → sound/motion → Settings window → welcome flow → reminders.
+
+## 10. Implementation status (2026-11-06)
+
+Built: account groups + migration + `switchGroup` (tested), usage service with cache and honest states (tested; endpoint shape unverified, see SPIKE-0-FINDINGS.md), themed panel with connector lanes, ⋯ menus (re-authenticate, re-import, rename, colour, remove), detail card, hold to switch with Both/only selector, Undo and partial-failure actions, twin-bars menu bar icon, synthesised sounds, reduced motion, appearance override, settings-only window, add/re-authenticate window, welcome import, reminder notifications.
+
+Not verified on a real screen: the panel was rendered to PNGs with synthetic data (`SwaplaneApp --snapshot <dir>`), but hold-to-switch timing, the NSPanel position on external displays, sounds, notifications and the Keychain prompt for reading the Claude Code token have not been exercised by hand. Provider tabs and OpenAI wiring wait for v0.3.
