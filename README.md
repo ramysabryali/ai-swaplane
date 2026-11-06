@@ -78,12 +78,24 @@ Report a vulnerability through [SECURITY.md](SECURITY.md), not a public issue.
 
 ## Uninstall
 
+Installed with Homebrew? Remove it with Homebrew:
+
+```bash
+brew uninstall --cask --zap ai-swaplane
+```
+
+Otherwise use the script:
+
 ```bash
 ./scripts/uninstall.sh            # removes the app, keeps your saved accounts
 ./scripts/uninstall.sh --purge    # also deletes saved accounts and their Keychain items
 ```
 
 Claude Code and Claude Desktop are never touched by uninstalling.
+
+## Troubleshooting
+
+**Homebrew says it's already installed after I deleted the app.** Homebrew keeps its own record of installs. Run `brew reinstall --cask ramysabryali/tap/ai-swaplane`. If that fails, run `brew uninstall --cask --force ai-swaplane` and install again. Your saved accounts are kept.
 
 ## Build and test
 
