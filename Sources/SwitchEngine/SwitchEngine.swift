@@ -75,15 +75,21 @@ public actor SwitchEngine {
     /// Saves the currently signed-in account as a new profile and marks it active.
     @discardableResult
     public func importCurrent(
-        tool: Tool, label: String, colorName: String = "blue", emoji: String? = nil
+        tool: Tool, label: String, colorName: String = "blue", emoji: String? = nil, groupID: UUID? = nil
     ) async throws -> Profile {
         let a = try adapter(tool)
         guard await a.probe().status.allowsSwitching else { throw SwaplaneError.toolNotInstalled(tool) }
         guard let identity = try await a.detectCurrentIdentity() else { throw SwaplaneError.noCredentials(tool) }
         let bundle = try await a.capture()
+        var gid = groupID
+        if gid == nil {
+            let g = AccountGroup(label: label, colorName: colorName, emoji: emoji, createdAt: now())
+            try await vault.addGroup(g)
+            gid = g.id
+        }
         let profile = Profile(
             tool: tool, label: label, identityHint: identity.displayHint,
-            identityKey: identity.identityKey, colorName: colorName, emoji: emoji, createdAt: now())
+            identityKey: identity.identityKey, colorName: colorName, emoji: emoji, groupID: gid, createdAt: now())
         try await vault.saveSnapshot(bundle, for: profile.id)
         try await vault.add(profile)
         try await vault.setActive(profile.id, for: tool)
@@ -216,6 +222,29 @@ public actor SwitchEngine {
         clearJournal()
         logActivity(tool: tool, from: active?.label, to: target.label, result: "ok")
         progress(.done)
+    }
+
+    // MARK: Group switch
+
+    /// Switches an account (group) on the given tools (all tools it has a profile for when `nil`).
+    /// Claude Code runs before Desktop. Each tool is its own transaction; a failure in one never
+    /// rolls back another. Tools the group has no profile for are skipped.
+    public func switchGroup(
+        _ groupID: UUID, tools: Set<Tool>? = nil, onDrift: DriftResolution = .abort,
+        progress: @escaping @Sendable (Tool, SwitchPhase) -> Void = { _, _ in }
+    ) async throws -> [(tool: Tool, result: Result<Void, Error>)] {
+        let members = try await vault.profiles().filter { $0.groupID == groupID }
+        var out: [(tool: Tool, result: Result<Void, Error>)] = []
+        for tool in Tool.allCases {
+            guard tools?.contains(tool) ?? true, let p = members.first(where: { $0.tool == tool }) else { continue }
+            do {
+                try await switchTo(p.id, onDrift: onDrift) { progress(tool, $0) }
+                out.append((tool, .success(())))
+            } catch {
+                out.append((tool, .failure(error)))
+            }
+        }
+        return out
     }
 
     // MARK: Crash recovery

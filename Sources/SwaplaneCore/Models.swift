@@ -39,6 +39,8 @@ public struct Profile: Codable, Identifiable, Sendable, Equatable {
     public var colorName: String
     public var emoji: String?
     public var isolation: IsolationMode
+    /// The account (card/lane) this profile belongs to. Links a Code and a Desktop profile.
+    public var groupID: UUID?
     public var createdAt: Date
     public var lastUsedAt: Date?
     public var schemaVersion: Int
@@ -46,7 +48,7 @@ public struct Profile: Codable, Identifiable, Sendable, Equatable {
     public init(
         id: UUID = UUID(), tool: Tool, label: String, identityHint: String? = nil,
         identityKey: String? = nil, colorName: String = "blue", emoji: String? = nil,
-        isolation: IsolationMode = .credentialsOnly, createdAt: Date = Date(),
+        isolation: IsolationMode = .credentialsOnly, groupID: UUID? = nil, createdAt: Date = Date(),
         lastUsedAt: Date? = nil, schemaVersion: Int = 1
     ) {
         self.id = id
@@ -57,9 +59,26 @@ public struct Profile: Codable, Identifiable, Sendable, Equatable {
         self.colorName = colorName
         self.emoji = emoji
         self.isolation = isolation
+        self.groupID = groupID
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
         self.schemaVersion = schemaVersion
+    }
+}
+
+/// One account as the user sees it (a lane): groups the per-tool profiles. Non-secret, `groups.json`.
+public struct AccountGroup: Codable, Identifiable, Sendable, Equatable {
+    public let id: UUID
+    public var label: String
+    public var colorName: String
+    public var emoji: String?
+    public var createdAt: Date
+    public init(id: UUID = UUID(), label: String, colorName: String = "blue", emoji: String? = nil, createdAt: Date = Date()) {
+        self.id = id
+        self.label = label
+        self.colorName = colorName
+        self.emoji = emoji
+        self.createdAt = createdAt
     }
 }
 

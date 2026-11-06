@@ -15,6 +15,8 @@ public struct Paths: Sendable {
     public var snapshotsDir: URL { supportDir.appendingPathComponent("snapshots", isDirectory: true) }
     public var rollbackDir: URL { supportDir.appendingPathComponent("rollback", isDirectory: true) }
     public var profilesFile: URL { supportDir.appendingPathComponent("profiles.json") }
+    public var groupsFile: URL { supportDir.appendingPathComponent("groups.json") }
+    public var usageFile: URL { supportDir.appendingPathComponent("usage.json") }
     public var stateFile: URL { supportDir.appendingPathComponent("state.json") }
     public var journalFile: URL { supportDir.appendingPathComponent("journal.json") }
     public var activityLog: URL { supportDir.appendingPathComponent("activity.log") }

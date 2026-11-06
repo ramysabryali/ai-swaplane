@@ -45,9 +45,12 @@ public actor Vault {
     /// Removes the profile and securely deletes its snapshot, key, and state references.
     public func remove(id: UUID) throws {
         var all = try profiles()
-        guard all.contains(where: { $0.id == id }) else { throw SwaplaneError.profileNotFound }
+        guard let removed = all.first(where: { $0.id == id }) else { throw SwaplaneError.profileNotFound }
         all.removeAll { $0.id == id }
         try save(all)
+        if let gid = removed.groupID, !all.contains(where: { $0.groupID == gid }) {
+            try saveGroups(try groups().filter { $0.id != gid })
+        }
         let file = snapshotURL(id)
         if let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int), size > 0,
             let h = try? FileHandle(forWritingTo: file)
@@ -61,6 +64,64 @@ public actor Vault {
         for (tool, active) in st.active where active == id { st.active[tool] = nil }
         for (tool, prev) in st.previous where prev == id { st.previous[tool] = nil }
         try saveState(st)
+    }
+
+    // MARK: Groups (accounts)
+
+    public func groups() throws -> [AccountGroup] {
+        guard let data = try? Data(contentsOf: paths.groupsFile) else { return [] }
+        return try SwaplaneJSON.decoder.decode([AccountGroup].self, from: data)
+    }
+
+    private func saveGroups(_ g: [AccountGroup]) throws {
+        try FileUtil.atomicWrite(try SwaplaneJSON.encoder.encode(g), to: paths.groupsFile)
+    }
+
+    public func group(id: UUID) throws -> AccountGroup? { try groups().first { $0.id == id } }
+
+    public func addGroup(_ g: AccountGroup) throws {
+        var all = try groups()
+        all.append(g)
+        try saveGroups(all)
+    }
+
+    public func updateGroup(_ g: AccountGroup) throws {
+        var all = try groups()
+        guard let i = all.firstIndex(where: { $0.id == g.id }) else { throw SwaplaneError.profileNotFound }
+        all[i] = g
+        try saveGroups(all)
+    }
+
+    /// Assigns every profile without a group to one. Profiles of *different* tools that share an
+    /// identity merge into one group; same-tool duplicates stay in separate groups (same email,
+    /// independent state). Idempotent.
+    @discardableResult
+    public func migrateGroups() throws -> Bool {
+        var profiles = try profiles()
+        var groups = try groups()
+        guard profiles.contains(where: { $0.groupID == nil }) else { return false }
+        var identity: [UUID: String] = [:]      // group -> identityKey
+        var tools: [UUID: Set<Tool>] = [:]
+        for p in profiles { if let g = p.groupID { tools[g, default: []].insert(p.tool) } }
+        for g in groups { if let p = profiles.first(where: { $0.groupID == g.id && $0.identityKey != nil }) { identity[g.id] = p.identityKey } }
+        for i in profiles.indices.sorted(by: { profiles[$0].createdAt < profiles[$1].createdAt }) where profiles[i].groupID == nil {
+            let p = profiles[i]
+            if let key = p.identityKey,
+                let gid = groups.first(where: { identity[$0.id] == key && !(tools[$0.id] ?? []).contains(p.tool) })?.id
+            {
+                profiles[i].groupID = gid
+                tools[gid, default: []].insert(p.tool)
+            } else {
+                let g = AccountGroup(label: p.label, colorName: p.colorName, emoji: p.emoji, createdAt: p.createdAt)
+                groups.append(g)
+                profiles[i].groupID = g.id
+                tools[g.id] = [p.tool]
+                if let key = p.identityKey { identity[g.id] = key }
+            }
+        }
+        try saveGroups(groups)
+        try save(profiles)
+        return true
     }
 
     // MARK: State
