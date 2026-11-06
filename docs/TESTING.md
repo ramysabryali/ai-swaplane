@@ -1,4 +1,4 @@
-# Testing — Swaplane
+# Testing — AI Swaplane
 
 ## Principles
 
@@ -14,7 +14,7 @@
 | Keychain | XCTest with a **test keychain** | Create via `SecKeychainCreate` in a temp file (or a unique `kSecAttrService` prefix `app.swaplane.test.<uuid>` cleaned up in `tearDown`). Never touch the login keychain items of real tools. |
 | Engine | XCTest with fake adapter + fake process controller | Transaction order, rollback on failure at each phase, crash-recovery from journal, concurrent switch serialization |
 | UI | SwiftUI previews + ViewInspector-style tests (optional) + XCUITest smoke | Popover renders, row click triggers switch intent |
-| Manual | Checklist below | Real apps, real displays, Touch ID |
+| Manual | Checklist below | Real apps, real displays |
 
 ## Dependency injection seams (build these in from the start)
 
@@ -58,14 +58,14 @@ swift format lint -r Sources Tests
 - Jobs: build, test, format-lint, **secret scan** (gitleaks), **host allowlist check** (script greps source for URL hosts not in allowlist), `codesign` verification on release builds.
 - No secrets in CI for tests; signing/notarization only on tagged release workflow.
 
-## Manual checklist (per milestone, on real hardware)
+## Manual checklist (before each release, on real hardware)
 
 - [ ] Clean macOS user account: onboarding detects nothing → empty state OK.
 - [ ] Import real logged-in account for each in-scope tool; identity shown correctly.
 - [ ] Switch A↔B ten times for each tool; tools open signed in as expected.
 - [ ] Switch while the desktop app has an unsent draft → warning shown, no data loss beyond documented.
 - [ ] Kill Swaplane mid-switch → relaunch recovers.
-- [ ] Display matrix from UX.md (1 display, 2 displays, unplug during popover, fullscreen app).
+- [ ] Displays: 1 display, 2 displays, unplug while the panel is open, a fullscreen app.
 - [ ] VoiceOver walkthrough of popover and main window.
 - [ ] Dark/Light, increased contrast, reduced motion.
 - [ ] Security checklist from SECURITY.md.

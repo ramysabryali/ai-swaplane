@@ -1,8 +1,7 @@
 import Foundation
 import SwaplaneCore
 
-// v0.1 CLI stub: read-only. Never touches the Keychain; only reads non-secret metadata.
-// Switching from the CLI arrives in v0.4 via IPC to the app.
+// Read-only CLI. Never touches the Keychain; only reads non-secret metadata.
 let version = "0.1.0"
 let paths = Paths()
 
@@ -51,6 +50,6 @@ default:
       list      show profiles (* = active)
       current   show the active profile per tool
       version   print version
-    Switching from the CLI arrives in v0.4. Use the menu bar app for now.
+    Switching is done from the menu bar app.
     """)
 }
