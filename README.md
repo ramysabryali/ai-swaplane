@@ -1,39 +1,96 @@
-# Swaplane
+# AI Swaplane
 
-> One-click account switching for your AI tools on macOS — desktop apps and CLIs, from the menu bar.
+Switch between your Claude accounts from the macOS menu bar. Claude Code and Claude Desktop, one hold of a button, and each account keeps its own state.
 
-**Status:** specification stage. This repo currently contains the full spec set for implementation with Claude Code. Start with [CLAUDE.md](CLAUDE.md) and [docs/SPIKE-0.md](docs/SPIKE-0.md).
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-dark.png">
+    <img alt="AI Swaplane in the macOS menu bar, showing four accounts, their usage, and the Hold to switch button" src="docs/images/menubar-light.png" width="560">
+  </picture>
+</p>
 
-## Features (planned)
+> AI Swaplane is an independent open-source project. It is not affiliated with or endorsed by Anthropic.
 
-- Switch **Claude Desktop** and **Claude Code** accounts; later **Codex CLI** and **ChatGPT desktop**
-- Menu bar switcher that works on every display
-- Auto-detects accounts you're already logged into
-- Separate state per profile — even for the same email
-- Credentials stored in the macOS Keychain, snapshots encrypted at rest, Touch ID gate
-- Live usage meters and reset countdowns
-- Per-terminal and per-project account selection
-- Global hotkey palette, Shortcuts/Spotlight integration, encrypted backup
-- Fully native, standalone, no telemetry
+## Install
 
-## Roadmap
+**Requirements:** macOS 14 or newer, and Claude Code and/or Claude Desktop.
 
-| Version | Scope |
-|---|---|
-| v0.1 | Claude Desktop + Claude Code, import wizard, menu bar switcher, Keychain storage |
-| v0.2 | Live usage, Touch ID gate |
-| v0.3 | Codex CLI, then ChatGPT desktop |
-| v0.4 | Per-shell and per-project switching |
-| v0.5 | Hotkey palette, App Intents, encrypted backup, auto-update |
+### Build and install from source
 
-Details: [docs/ROADMAP.md](docs/ROADMAP.md).
+You need Xcode 16 or newer (or the Swift 6 toolchain).
 
-## Documentation
+```bash
+git clone https://github.com/ramysabryali/ai-swaplane.git
+cd ai-swaplane
+./scripts/install.sh
+```
 
-- [Product](docs/PRODUCT.md) · [UX](docs/UX.md) · [Architecture](docs/ARCHITECTURE.md)
-- [Security](docs/SECURITY.md) · [Adapters](docs/ADAPTERS.md) · [Testing](docs/TESTING.md)
-- [Spike 0](docs/SPIKE-0.md) · [Milestones](docs/milestones)
+The script builds a release app and copies `AI Swaplane.app` to `/Applications` (or `~/Applications` if that isn't writable). Use `--dir <folder>` to pick another place.
+
+### Download
+
+Grab `AI-Swaplane-<version>.zip` from the [Releases](https://github.com/ramysabryali/ai-swaplane/releases) page, unzip it, and drag **AI Swaplane** to Applications.
+
+Releases that aren't notarized show a Gatekeeper warning on first launch. Right-click the app, choose **Open**, then **Open** again. Or run:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/AI Swaplane.app"
+```
+
+### First launch
+
+AI Swaplane lives in the menu bar and has no Dock icon until a window is open. macOS asks once to let it read the "Claude Code-credentials" item in your Keychain, which it needs for usage numbers. Choose **Always Allow**.
+
+## Use it
+
+1. Sign in to Claude Code and Claude Desktop with your first account, then click the menu bar icon and choose **Import detected account**.
+2. To add another account, choose **Add account** and use **Sign in with another account…**. Sign in, then click **Save**.
+3. Select an account in the list and **hold** the orange button for about a second to switch. Release early to cancel.
+
+An account holds a Claude Code sign-in and a Claude Desktop sign-in together, so one switch moves both. Pick **CLI only** or **Desktop only** to move just one. Claude Desktop is quit and reopened during a switch.
+
+Settings (the gear icon) has appearance, sound, motion, usage, and privacy options. A small read-only command-line tool is bundled at `AI Swaplane.app/Contents/Resources/bin/swaplane`. `swaplane list` shows your saved accounts.
+
+## Privacy and security
+
+- Sign-ins are encrypted with AES-256-GCM. The keys live in your macOS Keychain, and no token or key is written to disk in plain text.
+- There is no telemetry, analytics, or crash upload.
+- The only network request is the optional usage check to `api.anthropic.com`, using the sign-in you already have. Turn it off under **Settings > General > Show usage limits**.
+- AI Swaplane never refreshes or rotates tokens on its own.
+- It is not sandboxed because it has to read and write other apps' data folders. The source is here so you can check what it does. See [docs/SECURITY.md](docs/SECURITY.md) for the threat model.
+
+Report a vulnerability through [SECURITY.md](SECURITY.md), not a public issue.
+
+## Known limits
+
+- It works with Claude Code and Claude Desktop only. Other tools are not supported.
+- It relies on how those apps store their sign-in today. Anthropic can change that without notice, and a new version of either app may stop working until AI Swaplane is updated.
+- The usage numbers come from an undocumented endpoint. If it changes, usage shows as unavailable and switching keeps working.
+- Usage for accounts you aren't signed in to right now is the last number seen. Sign-ins expire, and AI Swaplane won't refresh them for you.
+
+## Uninstall
+
+```bash
+./scripts/uninstall.sh            # removes the app, keeps your saved accounts
+./scripts/uninstall.sh --purge    # also deletes saved accounts and their Keychain items
+```
+
+Claude Code and Claude Desktop are never touched by uninstalling.
+
+## Build and test
+
+```bash
+swift build
+swift test
+./scripts/make-app.sh debug     # builds build/AI Swaplane.app
+```
+
+Tests use fixtures and a temporary home folder, never your real accounts. See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/TESTING.md](docs/TESTING.md).
 
 ## Responsible use
 
-Swaplane is for keeping legitimately separate accounts apart (work vs personal, client vs own). It is not designed to circumvent usage limits or vendor terms. Users are responsible for complying with each service's terms.
+AI Swaplane is for keeping legitimately separate accounts apart, such as work and personal. It is not designed to get around usage limits or any service's terms. You are responsible for following the terms of the services you use.
+
+## License
+
+[MIT](LICENSE)
