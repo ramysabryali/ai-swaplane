@@ -50,6 +50,12 @@ public actor SwitchEngine {
     }
 
     /// True when the live signed-in account differs from the active profile's account.
+    /// Triggers (and reports) macOS access to the Claude Code credential.
+    public func requestKeychainAccess() async -> KeychainAccess {
+        guard let a = (try? adapter(.claudeCode)) as? ClaudeCodeAdapter else { return .notSignedIn }
+        return await a.requestKeychainAccess()
+    }
+
     public func hasDrift(_ tool: Tool) async -> Bool {
         guard let id = try? await vault.activeProfileID(for: tool),
             let p = try? await vault.profile(id: id), let expected = p.identityKey,

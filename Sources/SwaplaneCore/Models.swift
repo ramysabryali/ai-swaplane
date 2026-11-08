@@ -7,7 +7,7 @@ public enum Tool: String, Codable, CaseIterable, Sendable, Hashable {
 
     public var displayName: String {
         switch self {
-        case .claudeCode: "Claude Code"
+        case .claudeCode: "CLI"
         case .claudeDesktop: "Claude Desktop"
         }
     }

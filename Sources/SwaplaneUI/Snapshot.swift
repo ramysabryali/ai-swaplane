@@ -57,12 +57,52 @@ public enum SnapshotRenderer {
         { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("menubar.png")) }
         composite(model: model, dark: true, into: dir)
         composite(model: model, dark: false, into: dir)
+        composite(model: model, dark: true, scenario: "multi-detected", name: "menubar-import", height: 840, into: dir)
+        composite(model: model, dark: false, scenario: "multi-detected", name: "menubar-import", height: 840, into: dir)
+    }
+
+    /// Developer aid: renders the first-run and new-account screens to PNGs (synthetic data).
+    public static func runFlows(into dir: String) {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("swaplane-snap-\(UUID().uuidString)")
+        let paths = Paths(home: home)
+        let kc = NullKeychain()
+        let vault = Vault(paths: paths, keychain: kc)
+        let engine = SwitchEngine(paths: paths, vault: vault, adapters: [], processes: AppKitProcessController())
+        let model = AppModel(engine: engine, vault: vault, usage: UsageService(paths: paths, keychain: kc))
+        model.snapshotMode = true
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        func write<V: View>(_ name: String, _ v: V) {
+            NSApp.appearance = NSAppearance(named: .darkAqua)
+            let r = ImageRenderer(content: v.environment(\.colorScheme, .dark).background(Color(white: 0.16)))
+            r.scale = 2
+            if let tiff = r.nsImage?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                let png = rep.representation(using: .png, properties: [:])
+            { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png")) }
+        }
+        model.seedForSnapshot("detected")
+        write("panel-detected", PanelView(model: model).padding(24))
+        model.seedForSnapshot("empty")
+        for i in 0..<5 { write("onboarding-\(i + 1)-empty", OnboardingView(model: model, page: i) {}) }
+        model.seedKeychain(.denied)
+        write("onboarding-2-denied", OnboardingView(model: model, page: 1) {})
+        model.seedKeychain(nil)
+        model.seedForSnapshot("welcome")
+        write("onboarding-3-found", OnboardingView(model: model, page: 2, detecting: false) {})
+        model.seedForSnapshot("detected")
+        model.newAccount = NewAccountFlow(phase: .intro)
+        write("new-1-intro", NewAccountView(model: model) {})
+        model.seedForSnapshot("one")
+        model.newAccount = NewAccountFlow(phase: .signIn)
+        write("new-2-signin", NewAccountView(model: model) {})
+        model.seedForSnapshot("found")
+        model.newAccount = NewAccountFlow(phase: .signIn)
+        write("new-3-found", NewAccountView(model: model) {})
     }
 
     /// A menu bar strip with the icon and the open panel underneath, for the README.
-    static func composite(model: AppModel, dark: Bool, into dir: String) {
+    static func composite(model: AppModel, dark: Bool, scenario: String = "multi", name: String = "menubar", height: CGFloat = 700, into dir: String) {
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        model.seedForSnapshot("multi")
+        model.seedForSnapshot(scenario)
         model.toast = nil
         let icon = MenuBarIcon.image(primary: Palette.ns("blue"), secondary: Palette.ns("green"), session: 18, weekly: 81)
         let barFg: Color = dark ? .white : .black
@@ -89,11 +129,11 @@ public enum SnapshotRenderer {
                     .padding(.trailing, 24)
             }
         }
-        .frame(width: 560, height: 700)
+        .frame(width: 560, height: height)
         let r = ImageRenderer(content: view)
         r.scale = 2
         if let tiff = r.nsImage?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
             let png = rep.representation(using: .png, properties: [:])
-        { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("menubar-\(dark ? "dark" : "light").png")) }
+        { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name)-\(dark ? "dark" : "light").png")) }
     }
 }
