@@ -57,6 +57,8 @@ public enum SnapshotRenderer {
         { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("menubar.png")) }
         composite(model: model, dark: true, into: dir)
         composite(model: model, dark: false, into: dir)
+        composite(model: model, dark: true, scenario: "multi-detected", name: "menubar-import", height: 840, into: dir)
+        composite(model: model, dark: false, scenario: "multi-detected", name: "menubar-import", height: 840, into: dir)
     }
 
     /// Developer aid: renders the first-run and new-account screens to PNGs (synthetic data).
@@ -98,9 +100,9 @@ public enum SnapshotRenderer {
     }
 
     /// A menu bar strip with the icon and the open panel underneath, for the README.
-    static func composite(model: AppModel, dark: Bool, into dir: String) {
+    static func composite(model: AppModel, dark: Bool, scenario: String = "multi", name: String = "menubar", height: CGFloat = 700, into dir: String) {
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
-        model.seedForSnapshot("multi")
+        model.seedForSnapshot(scenario)
         model.toast = nil
         let icon = MenuBarIcon.image(primary: Palette.ns("blue"), secondary: Palette.ns("green"), session: 18, weekly: 81)
         let barFg: Color = dark ? .white : .black
@@ -127,11 +129,11 @@ public enum SnapshotRenderer {
                     .padding(.trailing, 24)
             }
         }
-        .frame(width: 560, height: 700)
+        .frame(width: 560, height: height)
         let r = ImageRenderer(content: view)
         r.scale = 2
         if let tiff = r.nsImage?.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
             let png = rep.representation(using: .png, properties: [:])
-        { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("menubar-\(dark ? "dark" : "light").png")) }
+        { try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name)-\(dark ? "dark" : "light").png")) }
     }
 }

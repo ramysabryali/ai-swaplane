@@ -300,7 +300,7 @@ public final class AppModel {
         groups = gs; profiles = ps; activeByTool = act; usage = snaps
         probes = [.claudeCode: ToolProbe(status: .ok), .claudeDesktop: ToolProbe(status: .ok)]
         let same = DetectedIdentity(identityKey: scenario == "welcome" ? "k" : "bob", displayHint: scenario == "welcome" ? "alice@example.com" : "bob@work.example")
-        detected = ["welcome", "detected", "found"].contains(scenario) ? [.claudeCode: same, .claudeDesktop: same] : [:]
+        detected = ["welcome", "detected", "found", "multi-detected"].contains(scenario) ? [.claudeCode: same, .claudeDesktop: same] : [:]
         selectedID = gs.count > 1 ? gs[1].id : gs.first?.id
         toast = scenario == "multi" ? Toast(message: "Switched CLI to Personal") : nil
         loaded = true

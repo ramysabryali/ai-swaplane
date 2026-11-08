@@ -1,12 +1,31 @@
-# AI Swaplane
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/icon-dark.png">
+    <img alt="AI Swaplane app icon" src="docs/images/icon-light.png" width="128" height="128">
+  </picture>
+</p>
 
-Switch between your Claude accounts from the macOS menu bar. Claude Code and Claude Desktop, one hold of a button, and each account keeps its own state.
+<h1 align="center">AI Swaplane</h1>
+
+<p align="center">
+  Switch between your Claude accounts from the macOS menu bar.<br>
+  Claude Code and Claude Desktop, one hold of a button, and each account keeps its own state.
+</p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-dark.png">
     <img alt="AI Swaplane in the macOS menu bar, showing four accounts, their usage, and the Hold to switch button" src="docs/images/menubar-light.png" width="560">
   </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-import-dark.png">
+    <img alt="AI Swaplane offering to import a newly detected signed-in account" src="docs/images/menubar-import-light.png" width="560">
+  </picture>
+  <br>
+  <sub>Accounts you sign in to are detected automatically and offered for import.</sub>
 </p>
 
 > AI Swaplane is an independent open-source project. It is not affiliated with or endorsed by Anthropic.
