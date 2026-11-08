@@ -146,7 +146,7 @@ struct NewAccountView: View {
             .background(Theme.signal.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.signal.opacity(0.35)))
         InfoRow(symbol: "person.crop.circle.badge.minus", title: "We clear the sign-in on this Mac",
-                text: "Claude Desktop returns to its sign-in screen. Claude Code switches when you run /login. You stay signed in to Claude online.")
+                text: "Claude Desktop returns to its sign-in screen. The CLI switches when you run /login. You stay signed in to Claude online.")
         InfoRow(symbol: "person.crop.circle.badge.plus", title: "You sign in as the new account",
                 text: "We notice it automatically, then you import it.")
     }

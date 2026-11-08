@@ -9,7 +9,7 @@
 
 <p align="center">
   Switch between your Claude accounts from the macOS menu bar.<br>
-  Claude Code and Claude Desktop, one hold of a button, and each account keeps its own state.
+  Claude Code (the CLI) and Claude Desktop, one hold of a button, and each account keeps its own state.
 </p>
 
 <table align="center">
@@ -37,7 +37,7 @@
 
 ## Install
 
-**Requirements:** macOS 14 or newer, and Claude Code and/or Claude Desktop.
+**Requirements:** macOS 14 or newer, and Claude Code (the CLI) and/or Claude Desktop.
 
 ### Homebrew
 
@@ -75,11 +75,11 @@ AI Swaplane lives in the menu bar and has no Dock icon until a window is open. A
 
 ## Use it
 
-1. Sign in to Claude Code and Claude Desktop with your first account. AI Swaplane notices it and offers **Import account**. Detection stays on, so any account you sign in to later is offered the same way.
+1. Sign in to the CLI and Claude Desktop with your first account. AI Swaplane notices it and offers **Import account**. Detection stays on, so any account you sign in to later is offered the same way.
 2. To add an account you haven't signed in to yet, choose **Add account > Sign in to a new account…**. It saves your current account, clears the local sign-in, waits while you sign in as the new account, then offers to import it. **Cancel and restore** puts your previous account back.
 3. Select an account in the list and **hold** the orange button for about a second to switch. Release early to cancel.
 
-An account holds a Claude Code sign-in and a Claude Desktop sign-in together, so one switch moves both. Pick **CLI only** or **Desktop only** to move just one. Claude Desktop is quit and reopened during a switch.
+An account holds a CLI sign-in and a Desktop sign-in together, so one switch moves both. Pick **CLI only** or **Desktop only** to move just one. Claude Desktop is quit and reopened during a switch.
 
 Settings (the gear icon) has appearance, sound, motion, usage, and privacy options. A small read-only command-line tool is bundled at `AI Swaplane.app/Contents/Resources/bin/swaplane`. `swaplane list` shows your saved accounts.
 
@@ -95,7 +95,7 @@ Report a vulnerability through [SECURITY.md](SECURITY.md), not a public issue.
 
 ## Known limits
 
-- It works with Claude Code and Claude Desktop only. Other tools are not supported.
+- It works with the CLI (Claude Code) and Claude Desktop only. Other tools are not supported.
 - It relies on how those apps store their sign-in today. Anthropic can change that without notice, and a new version of either app may stop working until AI Swaplane is updated.
 - The usage numbers come from an undocumented endpoint. If it changes, usage shows as unavailable and switching keeps working.
 - Usage for accounts you aren't signed in to right now is the last number seen. Sign-ins expire, and AI Swaplane won't refresh them for you.
@@ -115,7 +115,7 @@ Otherwise use the script:
 ./scripts/uninstall.sh --purge    # also deletes saved accounts and their Keychain items
 ```
 
-Claude Code and Claude Desktop are never touched by uninstalling.
+The CLI and Claude Desktop are never touched by uninstalling.
 
 ## Troubleshooting
 

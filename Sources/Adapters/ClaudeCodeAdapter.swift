@@ -126,7 +126,7 @@ public struct ClaudeCodeAdapter: ToolAdapter {
             let obj = try? JSONSerialization.jsonObject(with: Data(r.stdout.utf8)) as? [String: Any],
             obj["loggedIn"] as? Bool == false
         {
-            throw SwaplaneError.verifyFailed("Claude Code reports it is not logged in")
+            throw SwaplaneError.verifyFailed("The CLI reports it is not logged in")
         }
     }
 }

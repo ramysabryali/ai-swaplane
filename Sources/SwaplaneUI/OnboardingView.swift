@@ -98,7 +98,7 @@ struct OnboardingView: View {
     private var keychainStep: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Allow Keychain access").font(.system(size: 19, weight: .semibold))
-            Text("Claude Code keeps its sign-in in your Keychain. AI Swaplane reads it to import accounts and show usage. It never leaves your Mac.")
+            Text("The CLI keeps its sign-in in your Keychain. AI Swaplane reads it to import accounts and show usage. It never leaves your Mac.")
                 .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             // What macOS will show, so the choice is easy to recognise.
             VStack(alignment: .leading, spacing: 10) {
@@ -128,7 +128,7 @@ struct OnboardingView: View {
                 if model.requestingKeychain { ProgressView().controlSize(.small) }
                 switch model.keychainAccess {
                 case .granted?: Label("Access granted", systemImage: "checkmark.circle.fill").foregroundStyle(Theme.success).font(.system(size: 12.5))
-                case .notSignedIn?: Text("No Claude Code sign-in found yet. macOS will ask the first time you import one.")
+                case .notSignedIn?: Text("No CLI sign-in found yet. macOS will ask the first time you import one.")
                     .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 case .denied?: Label("Access denied", systemImage: "xmark.octagon.fill").foregroundStyle(Theme.danger).font(.system(size: 12.5, weight: .medium))
                 case nil: EmptyView()
@@ -142,7 +142,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Disclaimer: Keychain access is required", systemImage: "exclamationmark.triangle.fill")
                 .font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.warn)
-            Text("AI Swaplane can't import or switch your accounts without reading your Claude Code sign-in from the Keychain. Choose **Ask again**, then **Always Allow**.")
+            Text("AI Swaplane can't import or switch your accounts without reading your CLI sign-in from the Keychain. Choose **Ask again**, then **Always Allow**.")
                 .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
             Text("It is secure. macOS controls this access and you can remove it any time in Keychain Access. Your sign-in stays on this Mac, saved copies are encrypted with a key held in your Keychain, and nothing is uploaded.")
                 .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

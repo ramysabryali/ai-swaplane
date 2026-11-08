@@ -488,7 +488,7 @@ struct DetailCard: View {
             }
             if snap.windows.count < 2 { note("No weekly limit shown for this account.") }
             if snap.state == .expired {
-                note("Claude Code's sign-in has expired. Run `claude` once, then check again.", icon: "arrow.triangle.2.circlepath", warn: true)
+                note("The CLI's sign-in has expired. Run `claude` once, then check again.", icon: "arrow.triangle.2.circlepath", warn: true)
                 HStack(spacing: 8) {
                     Chip(title: model.checkingUsage ? "Checking…" : "Check again", on: false) { Task { await model.checkUsageNow() } }
                         .disabled(model.checkingUsage)
@@ -500,7 +500,7 @@ struct DetailCard: View {
             switch snap?.state {
             case .none?: note("No usage limits on this account. Nothing to track.", icon: "infinity")
             case .expired?:
-                note("Claude Code's sign-in has expired. Run `claude` once, then check again.", icon: "arrow.triangle.2.circlepath", warn: true)
+                note("The CLI's sign-in has expired. Run `claude` once, then check again.", icon: "arrow.triangle.2.circlepath", warn: true)
                 HStack(spacing: 8) {
                     Chip(title: model.checkingUsage ? "Checking…" : "Check again", on: false) { Task { await model.checkUsageNow() } }
                         .disabled(model.checkingUsage)

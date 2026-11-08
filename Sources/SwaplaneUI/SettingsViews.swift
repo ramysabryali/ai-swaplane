@@ -83,7 +83,7 @@ private struct GeneralTab: View {
             }
             Section("Usage") {
                 Toggle("Show usage limits", isOn: $model.usageEnabled)
-                Text("Reads the limits for the account Claude Code is signed in to, from Anthropic's servers. Nothing else leaves this Mac.")
+                Text("Reads the limits for the account the CLI is signed in to, from Anthropic's servers. Nothing else leaves this Mac.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Refresh") {
