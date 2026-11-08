@@ -47,12 +47,12 @@ xattr -dr com.apple.quarantine "/Applications/AI Swaplane.app"
 
 ### First launch
 
-AI Swaplane lives in the menu bar and has no Dock icon until a window is open. macOS asks once to let it read the "Claude Code-credentials" item in your Keychain, which it needs for usage numbers. Choose **Always Allow**.
+AI Swaplane lives in the menu bar and has no Dock icon until a window is open. A short welcome tour opens the first time; reopen it from **Settings > About**. macOS asks once to let it read the "Claude Code-credentials" item in your Keychain, which it needs for usage numbers. Choose **Always Allow**.
 
 ## Use it
 
-1. Sign in to Claude Code and Claude Desktop with your first account, then click the menu bar icon and choose **Import detected account**.
-2. To add another account, choose **Add account** and use **Sign in with another account…**. Sign in, then click **Save**.
+1. Sign in to Claude Code and Claude Desktop with your first account. AI Swaplane notices it and offers **Import account**. Detection stays on, so any account you sign in to later is offered the same way.
+2. To add an account you haven't signed in to yet, choose **Add account > Sign in to a new account…**. It saves your current account, clears the local sign-in, waits while you sign in as the new account, then offers to import it. **Cancel and restore** puts your previous account back.
 3. Select an account in the list and **hold** the orange button for about a second to switch. Release early to cancel.
 
 An account holds a Claude Code sign-in and a Claude Desktop sign-in together, so one switch moves both. Pick **CLI only** or **Desktop only** to move just one. Claude Desktop is quit and reopened during a switch.

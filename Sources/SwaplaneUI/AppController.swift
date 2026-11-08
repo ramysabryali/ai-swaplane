@@ -19,6 +19,7 @@ final class KeyPanel: NSPanel {
 final class WindowsController: NSObject, NSWindowDelegate {
     private var settings: NSWindow?
     private var wizard: NSWindow?
+    private var onboarding: NSWindow?
     private let model: AppModel
     init(model: AppModel) { self.model = model }
 
@@ -37,7 +38,7 @@ final class WindowsController: NSObject, NSWindowDelegate {
     }
 
     func showWizard() {
-        let hosting = NSHostingController(rootView: ImportWizardView(model: model) { [weak self] in self?.closeWizard() })
+        let hosting = NSHostingController(rootView: WizardRouter(model: model) { [weak self] in self?.closeWizard() })
         if wizard == nil {
             let w = NSWindow(contentViewController: hosting)
             w.styleMask = [.titled, .closable]
@@ -48,6 +49,20 @@ final class WindowsController: NSObject, NSWindowDelegate {
             wizard = w
         } else { wizard?.contentViewController = hosting }
         present(wizard)
+    }
+
+    func showOnboarding() {
+        let hosting = NSHostingController(rootView: OnboardingView(model: model) { [weak self] in self?.onboarding?.close() })
+        if onboarding == nil {
+            let w = NSWindow(contentViewController: hosting)
+            w.styleMask = [.titled, .closable]
+            w.title = "Welcome to AI Swaplane"
+            w.isReleasedWhenClosed = false
+            w.delegate = self
+            w.center()
+            onboarding = w
+        } else { onboarding?.contentViewController = hosting }
+        present(onboarding)
     }
 
     func closeWizard() { model.showWizard = false; wizard?.close() }
@@ -61,14 +76,18 @@ final class WindowsController: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        if (notification.object as? NSWindow) === wizard { model.pendingEmptyTool = nil; model.reauthProfile = nil; model.showWizard = false }
+        if (notification.object as? NSWindow) === wizard {
+            model.pendingEmptyTool = nil; model.reauthProfile = nil; model.showWizard = false
+            if model.newAccount != nil { Task { await model.cancelNewAccount() } }
+        }
+        if (notification.object as? NSWindow) === onboarding { model.finishOnboarding() }
         DispatchQueue.main.async { [weak self] in
-            let open = [self?.settings, self?.wizard].compactMap { $0 }.contains { $0.isVisible }
+            let open = [self?.settings, self?.wizard, self?.onboarding].compactMap { $0 }.contains { $0.isVisible }
             if !open { NSApp.setActivationPolicy(.accessory) }
         }
     }
 
-    func ensureOnScreen() { for w in [settings, wizard].compactMap({ $0 }) where !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(w.frame) }) { w.center() } }
+    func ensureOnScreen() { for w in [settings, wizard, onboarding].compactMap({ $0 }) where !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(w.frame) }) { w.center() } }
 }
 
 @MainActor
@@ -109,6 +128,7 @@ final class StatusItemController: NSObject {
         }
         model.onChange = { [weak self] in self?.refreshIcon() }
         model.onClosePanel = { [weak self] in self?.close() }
+        model.onOpenPanel = { [weak self] in self?.open() }
         refreshIcon()
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.close(); self?.windows.ensureOnScreen() }
@@ -228,6 +248,7 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         let windows = WindowsController(model: model)
         model.onOpenSettings = { [weak windows] in windows?.showSettings() }
         model.onOpenWizard = { [weak windows] in windows?.showWizard() }
+        model.onOpenOnboarding = { [weak windows] in windows?.showOnboarding() }
         model.onQuit = { NSApp.terminate(nil) }
         self.model = model
         self.windows = windows
@@ -236,11 +257,35 @@ public final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             _ = await engine.recoverIfNeeded()
             await model.reload()
-            await model.refreshUsage()
+            if model.needsOnboarding { model.openOnboarding() } else { await model.refreshUsage() }
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak model] _ in
-            Task { @MainActor in await model?.reload(); await model?.refreshUsage() }
+        model.onRefreshSettingsChanged = { [weak self] in self?.scheduleRefresh() }
+        scheduleRefresh()
+        // Low Power Mode changes the interval; waking the Mac refreshes once so long intervals don't show stale data.
+        NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleRefresh() }
         }
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshNow() }
+        }
+    }
+
+    /// (Re)creates the background refresh timer from the user's setting. Loose tolerance lets macOS coalesce wake-ups.
+    private func scheduleRefresh() {
+        timer?.invalidate()
+        timer = nil
+        guard let seconds = model?.effectiveRefreshSeconds else { return }
+        let t = Timer(timeInterval: seconds, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshNow() }
+        }
+        t.tolerance = seconds * 0.25
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    private func refreshNow() {
+        guard let model, !model.showOnboarding else { return }
+        Task { await model.reload(); await model.refreshUsage() }
     }
 
     public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

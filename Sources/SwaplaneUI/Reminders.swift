@@ -13,12 +13,26 @@ public struct ReminderPrefs: Codable, Equatable, Sendable {
 /// Schedules local notifications at each window's reset time. Needs the app running (login item),
 /// notification permission and a known reset time; otherwise it does nothing.
 @MainActor
-enum Reminders {
+public enum Reminders {
     private static var available: Bool { Bundle.main.bundleIdentifier != nil && Bundle.main.bundlePath.hasSuffix(".app") }
 
     static func requestPermission() {
         guard available else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    /// Developer aid (`--test-notification`): posts one notification now so the icon and permission can be checked.
+    public static func sendTest() {
+        guard available else { return }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let c = UNMutableNotificationContent()
+            c.title = "AI Swaplane"
+            c.body = "Test notification. Reset reminders look like this."
+            c.sound = .default
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "test-\(UUID().uuidString)", content: c, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)))
+        }
     }
 
     static func sync(group: UUID, label: String, prefs: ReminderPrefs, snapshot: UsageSnapshot?) {

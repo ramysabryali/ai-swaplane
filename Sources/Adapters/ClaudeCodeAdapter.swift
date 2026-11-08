@@ -92,8 +92,21 @@ public struct ClaudeCodeAdapter: ToolAdapter {
         try JSONFile.write(cfg, to: paths.claudeJSON)
     }
 
+    /// Reads the Claude Code credential once so macOS shows its access prompt now, with context.
+    public func requestKeychainAccess() async -> KeychainAccess {
+        do {
+            guard try keychain.exists(service: C.keychainService, account: nil) else { return .notSignedIn }
+            return try keychain.read(service: C.keychainService, account: nil) == nil ? .notSignedIn : .granted
+        } catch { return .denied }
+    }
+
     public func prepareEmpty() async throws {
-        try keychain.delete(service: C.keychainService, account: nil)
+        do {
+            try keychain.delete(service: C.keychainService, account: nil)
+        } catch SwaplaneError.keychain(let status) where status == -25244 || status == -25243 {
+            // The item belongs to Claude Code, so macOS refuses to let another app delete it
+            // (errSecInvalidOwnerEdit / errSecNoAccessForItem). Leave it: `/login` replaces it in place.
+        }
         if var cfg = try JSONFile.readObject(paths.claudeJSON) {
             cfg[C.oauthKey] = nil
             try JSONFile.write(cfg, to: paths.claudeJSON)
@@ -117,3 +130,6 @@ public struct ClaudeCodeAdapter: ToolAdapter {
         }
     }
 }
+
+/// Result of asking macOS for access to the Claude Code Keychain item.
+public enum KeychainAccess: Sendable, Equatable { case granted, notSignedIn, denied }

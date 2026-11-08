@@ -16,6 +16,7 @@ struct PanelView: View {
             } else if model.accounts.isEmpty {
                 EmptyAccountsView(model: model)
             } else {
+                DetectedCard(model: model)
                 LanesView(model: model)
                 if let a = model.selected { DetailCard(model: model, account: a).id(a.id) }
             }
@@ -30,7 +31,7 @@ struct PanelView: View {
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Theme.line, lineWidth: 1))
         .animation(model.motion ? .snappy(duration: 0.25) : nil, value: model.accounts.count)
         .animation(model.motion ? .snappy(duration: 0.25) : nil, value: model.toast)
-        .task { await model.reload(); await model.refreshUsage() }
+        .task { await model.reload(); if !model.showOnboarding { await model.refreshUsage() } }
     }
 
     private var header: some View {
@@ -131,37 +132,71 @@ struct AddAccountMenu: View {
         if model.snapshotMode { menu } else { realMenu }
     }
 
-    private var menu: some View {
-        Label("Add account", systemImage: "plus").font(.system(size: 12.5))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+    private var menu: some View { chrome(Label("Sign in to a new account", systemImage: "plus").font(.system(size: 12.5))) }
+
+    @ViewBuilder private var realMenu: some View {
+        if model.detectedAccounts.isEmpty {
+            Button { model.onClosePanel?(); model.startNewAccount() } label: {
+                Label("Sign in to a new account", systemImage: "plus").font(.system(size: 12.5))
+            }
+            .buttonStyle(.plain).fixedSize().modifier(Chrome())
+        } else {
+            Menu {
+                ForEach(model.detectedAccounts) { a in
+                    Button("Import \(model.display(a.email) ?? "signed-in account")") { Task { await model.importDetected(a) } }
+                }
+                Divider()
+                Button("Sign in to a new account…") { model.onClosePanel?(); model.startNewAccount() }
+            } label: {
+                Label("Sign in to a new account", systemImage: "plus").font(.system(size: 12.5))
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().modifier(Chrome())
+        }
     }
 
-    private var realMenu: some View {
-        Menu {
-            ForEach(Tool.allCases, id: \.self) { t in
-                if model.probes[t]?.status.allowsSwitching == true, model.detected[t] != nil {
-                    Button(importTitle(t)) { model.onClosePanel?(); model.openWizard(tool: t, group: autoGroup(t)) }
+    private func chrome<V: View>(_ v: V) -> some View { v.modifier(Chrome()) }
+
+    private struct Chrome: ViewModifier {
+        func body(content: Content) -> some View {
+            content.padding(.horizontal, 10).padding(.vertical, 5)
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+        }
+    }
+}
+
+// MARK: Detected account card
+
+/// Offers to import an account that is signed in on this Mac but not saved yet.
+struct DetectedCard: View {
+    @Bindable var model: AppModel
+    var body: some View {
+        ForEach(model.pendingDetections) { a in
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "person.crop.circle.badge.plus").font(.system(size: 18)).foregroundStyle(Theme.signal)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("New account detected").font(.system(size: 12.5, weight: .semibold))
+                        Text("\(model.display(a.email) ?? "An account") is signed in to \(a.tools.map(\.shortName).joined(separator: " and "))")
+                            .font(.system(size: 11.5)).foregroundStyle(Theme.muted)
+                    }
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 12) {
+                    Spacer()
+                    Button("Not now") { model.dismissDetection(a) }
+                        .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.muted)
+                    Button { Task { await model.importDetected(a) } } label: {
+                        Text("Import account").font(.system(size: 12, weight: .semibold)).padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Theme.signal, in: RoundedRectangle(cornerRadius: 8)).foregroundStyle(Theme.ink)
+                    }.buttonStyle(.plain).disabled(model.busy)
                 }
             }
-            Button("Sign in with another account…") { model.onClosePanel?(); model.openWizard(tool: .claudeCode) }
-        } label: {
-            Label("Add account", systemImage: "plus").font(.system(size: 12.5))
+            .padding(12)
+            .background(Theme.signal.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.signal.opacity(0.35)))
+            .padding(.bottom, 10)
+            .transition(.opacity.combined(with: .move(edge: .top)))
         }
-        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-        .padding(.horizontal, 10).padding(.vertical, 5)
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
-    }
-
-    private func autoGroup(_ t: Tool) -> UUID? {
-        guard let key = model.detected[t]?.identityKey else { return nil }
-        return model.profiles.first { $0.tool != t && $0.identityKey == key && $0.groupID != nil }.flatMap { p in
-            model.accounts.first { $0.id == p.groupID && $0.profiles[t] == nil }?.id
-        }
-    }
-    private func importTitle(_ t: Tool) -> String {
-        if let g = autoGroup(t), let a = model.accounts.first(where: { $0.id == g }) { return "Add \(t.displayName) to \(a.group.label)" }
-        return "Import current \(t.displayName) account"
     }
 }
 
@@ -175,7 +210,7 @@ struct EmptyAccountsView: View {
                 .frame(width: 46, height: 46).background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
             Text(found ? "Welcome to AI Swaplane" : "No accounts yet").font(.system(size: 14, weight: .semibold))
             Text(found ? "Switch between AI accounts in one move. Sign-ins stay in your Keychain."
-                       : "Sign in to Claude, then import the account here.")
+                       : "Sign in to Claude Desktop or the CLI. AI Swaplane notices and offers to import it.")
                 .font(.system(size: 12)).foregroundStyle(Theme.muted).multilineTextAlignment(.center)
             VStack(spacing: 6) {
                 ForEach(Tool.allCases, id: \.self) { t in
@@ -194,8 +229,8 @@ struct EmptyAccountsView: View {
                 }
             }.padding(.top, 6)
             if found {
-                Button { Task { await model.importDetected() } } label: {
-                    Text("Import detected account").font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 9)
+                Button { Task { await model.importAllDetected() } } label: {
+                    Text(model.detectedAccounts.count > 1 ? "Import all accounts" : "Import account").font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity).padding(.vertical, 9)
                         .background(Theme.signal, in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(Theme.ink)
                 }.buttonStyle(.plain).disabled(model.busy).padding(.top, 4)
             }

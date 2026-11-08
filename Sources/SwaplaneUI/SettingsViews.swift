@@ -48,11 +48,11 @@ struct SettingsView: View {
                 case .safety: SafetyTab(model: model)
                 case .tools: ToolsTab(model: model)
                 case .activity: ActivityTab(model: model)
-                case .about: AboutTab()
+                case .about: AboutTab(model: model)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 480, height: 508)
+        .frame(width: 480, height: 696)
         .task { await model.reload() }
     }
 }
@@ -61,6 +61,7 @@ private struct GeneralTab: View {
     @Bindable var model: AppModel
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
+    @State private var revertingLogin = false
 
     var body: some View {
         Form {
@@ -70,8 +71,9 @@ private struct GeneralTab: View {
             .pickerStyle(.segmented)
             Toggle("Open at login", isOn: $launchAtLogin)
                 .onChange(of: launchAtLogin) { _, on in
+                    if revertingLogin { revertingLogin = false; return }
                     do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }; loginError = nil }
-                    catch { loginError = "Couldn't change the login item. Run the bundled app, not the development build."; launchAtLogin = !on }
+                    catch { loginError = "Couldn't change the login item. Run the bundled app, not the development build."; revertingLogin = true; launchAtLogin = !on }
                 }
             if let loginError { Text(loginError).font(.caption).foregroundStyle(.secondary) }
             Section("Feedback") {
@@ -82,6 +84,14 @@ private struct GeneralTab: View {
             Section("Usage") {
                 Toggle("Show usage limits", isOn: $model.usageEnabled)
                 Text("Reads the limits for the account Claude Code is signed in to, from Anthropic's servers. Nothing else leaves this Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Refresh") {
+                Picker("Check accounts and usage", selection: $model.refreshInterval) {
+                    ForEach(RefreshInterval.allCases) { Text($0.title).tag($0) }
+                }
+                Toggle("Slow down in Low Power Mode", isOn: $model.slowInLowPower)
+                Text("Opening the panel and waking your Mac always refresh. Longer intervals use less battery.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }.formStyle(.grouped)
@@ -140,6 +150,7 @@ private struct ActivityTab: View {
 }
 
 private struct AboutTab: View {
+    @Bindable var model: AppModel
     var body: some View {
         VStack(spacing: 0) {
             Image(systemName: "arrow.triangle.branch").font(.system(size: 64)).foregroundStyle(Theme.signal)
@@ -157,6 +168,7 @@ private struct AboutTab: View {
                         .font(.system(size: 12.5, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 7)
                         .overlay(Capsule().strokeBorder(Theme.line))
                 }.buttonStyle(.plain).padding(.top, 10)
+                Button("Show the welcome tour") { model.openOnboarding() }.buttonStyle(.link).font(.system(size: 12)).padding(.top, 6)
             }.padding(.top, 28)
         }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }

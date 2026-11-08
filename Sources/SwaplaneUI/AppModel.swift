@@ -37,6 +37,45 @@ public struct Account: Identifiable, Equatable {
 
 public enum TargetChoice: Equatable { case all, only(Tool) }
 
+/// How often AI Swaplane re-checks signed-in accounts and usage in the background.
+/// Opening the panel and waking the Mac always refresh, so longer intervals cost little freshness.
+public enum RefreshInterval: Int, CaseIterable, Identifiable, Sendable {
+    case oneMinute = 60, twoMinutes = 120, fiveMinutes = 300, tenMinutes = 600
+    case fifteenMinutes = 900, thirtyMinutes = 1800, manual = 0
+    public var id: Int { rawValue }
+    /// Battery-friendly default: a handful of cheap checks an hour.
+    public static let `default` = RefreshInterval.fiveMinutes
+    public var title: String {
+        switch self {
+        case .oneMinute: "Every minute"
+        case .twoMinutes: "Every 2 minutes"
+        case .fiveMinutes: "Every 5 minutes (default)"
+        case .tenMinutes: "Every 10 minutes"
+        case .fifteenMinutes: "Every 15 minutes"
+        case .thirtyMinutes: "Every 30 minutes"
+        case .manual: "Only when I open the panel"
+        }
+    }
+}
+
+/// A signed-in account found on this Mac that isn't saved yet. One entry per identity, across tools.
+public struct DetectedAccount: Identifiable, Equatable {
+    public let id: String
+    public var email: String?
+    public var organization: String?
+    public var tools: [Tool]
+}
+
+/// State of the "Sign in to a new account" window.
+public struct NewAccountFlow: Equatable {
+    public enum Phase: Equatable { case intro, preparing, signIn }
+    public var phase: Phase = .intro
+    /// Accounts that were active when the flow started, so Cancel can restore them.
+    public var previous: [Tool: UUID] = [:]
+    /// Identities that were already signed in when the flow started; they are never offered as the new account.
+    public var ignored: Set<String> = []
+}
+
 @MainActor @Observable
 public final class AppModel {
     // Data
@@ -71,6 +110,14 @@ public final class AppModel {
     public var pendingEmptyTool: Tool?
     /// Set when the wizard is re-authenticating an existing profile.
     public var reauthProfile: Profile?
+    /// Set while the "Sign in to a new account" window is open.
+    public var newAccount: NewAccountFlow?
+    /// Detected accounts the user chose "Not now" for (by identity). Persisted.
+    public private(set) var dismissedDetections: Set<String> = []
+    public var showOnboarding = false
+    /// Outcome of the Keychain access request on the welcome tour.
+    public private(set) var keychainAccess: KeychainAccess?
+    public private(set) var requestingKeychain = false
 
     // Settings
     public var appearance: AppearanceMode {
@@ -83,13 +130,30 @@ public final class AppModel {
         didSet { UserDefaults.standard.set(usageEnabled, forKey: "usageEnabled"); if usageEnabled { Task { await refreshUsage() } } }
     }
 
+    public var refreshInterval: RefreshInterval {
+        didSet { UserDefaults.standard.set(refreshInterval.rawValue, forKey: "refreshInterval"); onRefreshSettingsChanged?() }
+    }
+    /// Triples the interval while macOS Low Power Mode is on.
+    public var slowInLowPower: Bool {
+        didSet { UserDefaults.standard.set(slowInLowPower, forKey: "slowInLowPower"); onRefreshSettingsChanged?() }
+    }
+    /// Seconds between background refreshes, or `nil` when refreshing only on demand.
+    public var effectiveRefreshSeconds: TimeInterval? {
+        guard refreshInterval != .manual else { return nil }
+        let base = TimeInterval(refreshInterval.rawValue)
+        return slowInLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled ? base * 3 : base
+    }
+
     public var checkingUsage = false
     /// Set while rendering documentation images: menus draw as static labels (ImageRenderer can't draw `Menu`).
     @ObservationIgnored var snapshotMode = false
     @ObservationIgnored public var onChange: (() -> Void)?
     @ObservationIgnored public var onOpenSettings: (() -> Void)?
     @ObservationIgnored public var onOpenWizard: (() -> Void)?
+    @ObservationIgnored public var onRefreshSettingsChanged: (() -> Void)?
     @ObservationIgnored public var onClosePanel: (() -> Void)?
+    @ObservationIgnored public var onOpenPanel: (() -> Void)?
+    @ObservationIgnored public var onOpenOnboarding: (() -> Void)?
     @ObservationIgnored public var onQuit: (() -> Void)?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
 
@@ -107,6 +171,9 @@ public final class AppModel {
         reduceMotionSetting = d.bool(forKey: "reduceMotion")
         maskEmails = d.object(forKey: "maskEmails") as? Bool ?? true
         usageEnabled = d.object(forKey: "usageEnabled") as? Bool ?? true
+        refreshInterval = (d.object(forKey: "refreshInterval") as? Int).flatMap(RefreshInterval.init(rawValue:)) ?? .default
+        slowInLowPower = d.object(forKey: "slowInLowPower") as? Bool ?? true
+        dismissedDetections = Set(d.stringArray(forKey: "dismissedDetections") ?? [])
         if let data = d.data(forKey: "reminders"),
             let r = try? JSONDecoder().decode([String: ReminderPrefs].self, from: data)
         { reminders = Dictionary(uniqueKeysWithValues: r.compactMap { k, v in UUID(uuidString: k).map { ($0, v) } }) }
@@ -159,6 +226,35 @@ public final class AppModel {
         return d
     }
 
+    /// Signed-in accounts that aren't saved yet, one per identity (CLI and Desktop with the same identity share an entry).
+    public var detectedAccounts: [DetectedAccount] {
+        var out: [DetectedAccount] = []
+        for tool in Tool.allCases where probes[tool]?.status.allowsSwitching == true {
+            guard let d = unsaved(tool) else { continue }
+            let id = d.identityKey ?? "unknown-\(tool.rawValue)"
+            if let i = out.firstIndex(where: { $0.id == id }) {
+                out[i].tools.append(tool)
+                if out[i].email == nil { out[i].email = d.displayHint }
+                if out[i].organization == nil { out[i].organization = d.organization }
+            } else {
+                out.append(DetectedAccount(id: id, email: d.displayHint, organization: d.organization, tools: [tool]))
+            }
+        }
+        return out
+    }
+    /// Detected accounts the panel should offer to import (not dismissed).
+    public var pendingDetections: [DetectedAccount] { detectedAccounts.filter { !dismissedDetections.contains($0.id) } }
+
+    public func dismissDetection(_ a: DetectedAccount) {
+        dismissedDetections.insert(a.id)
+        UserDefaults.standard.set(Array(dismissedDetections), forKey: "dismissedDetections")
+    }
+
+    /// First colour no account uses yet, so new accounts look different without asking.
+    func nextColor() -> String {
+        Palette.names.first { n in !groups.contains { $0.colorName == n } } ?? Palette.names[groups.count % Palette.names.count]
+    }
+
     // MARK: Snapshot seeding (developer aid, synthetic data only)
 
     func seedForSnapshot(_ scenario: String) {
@@ -180,6 +276,10 @@ public final class AppModel {
         switch scenario {
         case "empty", "welcome":
             break
+        case "detected":
+            let p = g("Personal", "blue", 0); add(p, "alice@example.com")
+            snaps[p.id] = UsageSnapshot(windows: win(62, 35), fetchedAt: now, state: .fresh)
+            for t in Tool.allCases { act[t] = ps.first { $0.tool == t }?.id }
         case "one":
             let p = g("Personal", "blue", 0); add(p, "alice@example.com")
             snaps[p.id] = UsageSnapshot(windows: win(62, 35), fetchedAt: now, state: .fresh)
@@ -199,7 +299,8 @@ public final class AppModel {
         }
         groups = gs; profiles = ps; activeByTool = act; usage = snaps
         probes = [.claudeCode: ToolProbe(status: .ok), .claudeDesktop: ToolProbe(status: .ok)]
-        detected = scenario == "welcome" ? [.claudeCode: DetectedIdentity(identityKey: "k", displayHint: "alice@example.com"), .claudeDesktop: DetectedIdentity(identityKey: "k", displayHint: "alice@example.com")] : [:]
+        let same = DetectedIdentity(identityKey: scenario == "welcome" ? "k" : "bob", displayHint: scenario == "welcome" ? "alice@example.com" : "bob@work.example")
+        detected = ["welcome", "detected", "found"].contains(scenario) ? [.claudeCode: same, .claudeDesktop: same] : [:]
         selectedID = gs.count > 1 ? gs[1].id : gs.first?.id
         toast = scenario == "multi" ? Toast(message: "Switched CLI to Personal") : nil
         loaded = true
@@ -462,25 +563,141 @@ public final class AppModel {
         return ok
     }
 
-    /// One-click welcome import: every detected, unsaved live account. Same identity across tools shares one account.
-    public func importDetected() async {
+    /// Imports one detected account. CLI and Desktop with the same identity become one account;
+    /// a different identity never joins another account.
+    @discardableResult
+    public func importDetected(_ a: DetectedAccount, name: String? = nil, color: String? = nil, quiet: Bool = false) async -> Bool {
+        var ok = false
         await run {
             var gid: UUID?
-            var name = "Personal"
-            if let d = unsaved(.claudeCode) ?? unsaved(.claudeDesktop) { name = Self.name(from: d.displayHint) }
-            for tool in Tool.allCases {
-                guard let d = unsaved(tool), probes[tool]?.status.allowsSwitching == true else { continue }
-                if tool == .claudeDesktop, let key = d.identityKey,
-                    let match = profiles.first(where: { $0.tool == .claudeCode && $0.identityKey == key })?.groupID
-                { gid = match }
-                let p = try await engine.importCurrent(tool: tool, label: name, colorName: "blue", groupID: gid)
+            if let key = a.id.hasPrefix("unknown-") ? nil : a.id {
+                gid = profiles.first { $0.identityKey == key && $0.groupID != nil }?.groupID
+            }
+            let label = (name?.trimmingCharacters(in: .whitespaces)).flatMap { $0.isEmpty ? nil : $0 }
+                ?? gid.flatMap { id in groups.first { $0.id == id }?.label } ?? Self.name(from: a.email)
+            let colour = color ?? nextColor()
+            for tool in a.tools where probes[tool]?.status.allowsSwitching == true {
+                let p = try await engine.importCurrent(tool: tool, label: label, colorName: colour, emoji: nil, groupID: gid)
                 gid = p.groupID
                 profiles = (try? await vault.profiles()) ?? profiles
+                groups = (try? await vault.groups()) ?? groups
             }
             selectedID = gid
+            ok = true
         }
+        if ok, !quiet {
+            SoundPlayer.shared.play(.success)
+            showToast(Toast(message: "Imported \(a.email.flatMap { display($0) } ?? "your account")."), seconds: 5)
+        }
+        return ok
+    }
+
+    public func importAllDetected() async {
+        for a in pendingDetections { if await !importDetected(a, quiet: true) { return } }
         SoundPlayer.shared.play(.success)
-        showToast(Toast(message: "Imported your signed-in account."), seconds: 5)
+    }
+
+    func seedKeychain(_ a: KeychainAccess?) { keychainAccess = a }
+
+    // MARK: Onboarding
+
+    public var needsOnboarding: Bool { !UserDefaults.standard.bool(forKey: "onboarded") }
+
+    public func openOnboarding() {
+        showOnboarding = true
+        onOpenOnboarding?()
+    }
+
+    /// Reads the Claude Code credential so macOS asks now (choose Always Allow).
+    public func requestKeychainAccess() async {
+        guard !requestingKeychain else { return }
+        requestingKeychain = true
+        keychainAccess = await engine.requestKeychainAccess()
+        requestingKeychain = false
+    }
+
+    /// Marks the tour as seen (also when it is skipped or closed).
+    public func finishOnboarding(openPanel: Bool = false) {
+        UserDefaults.standard.set(true, forKey: "onboarded")
+        showOnboarding = false
+        if openPanel { onOpenPanel?() }
+        Task { await refreshUsage() }
+    }
+
+    // MARK: Sign in to a new account
+
+    public func startNewAccount() {
+        newAccount = NewAccountFlow()
+        showWizard = true
+        onOpenWizard?()
+    }
+
+    /// Saves what is live, clears the local sign-in (CLI and Desktop) and waits for the new sign-in.
+    public func prepareNewAccount() async {
+        guard var flow = newAccount else { return }
+        flow.previous = activeByTool
+        flow.ignored = Set(detectedAccounts.map(\.id))
+        flow.phase = .preparing
+        newAccount = flow
+        errorMessage = nil
+        do {
+            for tool in Tool.allCases where probes[tool]?.status.allowsSwitching == true {
+                try await engine.beginEmpty(tool: tool) { [weak self] ph in Task { @MainActor in self?.phaseText = "\(tool.shortName): \(ph.userText)" } }
+            }
+            phaseText = nil
+            newAccount?.phase = .signIn
+        } catch {
+            phaseText = nil
+            errorMessage = (error as? LocalizedError)?.errorDescription ?? "Something went wrong."
+            newAccount?.phase = .intro
+        }
+        await reload()
+    }
+
+    /// The new sign-in the window is waiting for: a detected account that wasn't signed in when it started.
+    public var newAccountCandidate: DetectedAccount? {
+        let skip = newAccount?.ignored ?? []
+        return detectedAccounts.first { !skip.contains($0.id) }
+    }
+
+    /// A saved account that is signed in right now. While the new-sign-in window waits, this means the user
+    /// signed in as an account that is already saved, so there is nothing new to import.
+    public var signedInAsSavedAccount: Account? {
+        for t in Tool.allCases {
+            guard let k = detected[t]?.identityKey,
+                let gid = profiles.first(where: { $0.identityKey == k })?.groupID,
+                let a = accounts.first(where: { $0.id == gid })
+            else { continue }
+            return a
+        }
+        return nil
+    }
+
+    /// Imports the account found by the new-sign-in window.
+    public func finishNewAccount(name: String, color: String) async -> Bool {
+        guard let a = newAccountCandidate else { return false }
+        let ok = await importDetected(a, name: name, color: color)
+        if ok { newAccount = nil }
+        return ok
+    }
+
+    /// Closes the window. If the sign-in was cleared, the previously active accounts are restored.
+    public func cancelNewAccount() async {
+        guard let flow = newAccount else { return }
+        newAccount = nil
+        guard flow.phase != .intro else { return }
+        busy = true
+        var byGroup: [UUID: Set<Tool>] = [:]
+        for (tool, pid) in flow.previous {
+            if let g = profiles.first(where: { $0.id == pid })?.groupID { byGroup[g, default: []].insert(tool) }
+        }
+        for (g, tools) in byGroup {
+            _ = try? await engine.switchGroup(g, tools: tools, onDrift: .discardLiveState)
+        }
+        busy = false
+        phaseText = nil
+        await reload()
+        if !byGroup.isEmpty { showToast(Toast(message: "Restored your previous account."), seconds: 5) }
     }
 
     static func name(from hint: String?) -> String {
