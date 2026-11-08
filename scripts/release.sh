@@ -29,7 +29,7 @@ if [ -n "${NOTARY_PROFILE:-}" ]; then
   rm -f "dist/notarize.zip"
 fi
 
-ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
+ditto -c -k --keepParent "$APP" "$ZIP"
 echo
 echo "Built $ZIP"
 shasum -a 256 "$ZIP"
