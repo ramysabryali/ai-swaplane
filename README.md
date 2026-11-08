@@ -12,21 +12,26 @@
   Claude Code and Claude Desktop, one hold of a button, and each account keeps its own state.
 </p>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-dark.png">
-    <img alt="AI Swaplane in the macOS menu bar, showing four accounts, their usage, and the Hold to switch button" src="docs/images/menubar-light.png" width="560">
-  </picture>
-</p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-import-dark.png">
-    <img alt="AI Swaplane offering to import a newly detected signed-in account" src="docs/images/menubar-import-light.png" width="560">
-  </picture>
-  <br>
-  <sub>Accounts you sign in to are detected automatically and offered for import.</sub>
-</p>
+<table align="center">
+  <tr>
+    <td align="center" valign="top" width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-dark.png">
+        <img alt="AI Swaplane in the macOS menu bar, showing four accounts, their usage, and the Hold to switch button" src="docs/images/menubar-light.png" width="100%">
+      </picture>
+      <br>
+      <sub>Switch accounts with one hold of a button.</sub>
+    </td>
+    <td align="center" valign="top" width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/menubar-import-dark.png">
+        <img alt="AI Swaplane offering to import a newly detected signed-in account" src="docs/images/menubar-import-light.png" width="100%">
+      </picture>
+      <br>
+      <sub>Accounts you sign in to are detected and offered for import.</sub>
+    </td>
+  </tr>
+</table>
 
 > AI Swaplane is an independent open-source project. It is not affiliated with or endorsed by Anthropic.
 
